@@ -12,6 +12,11 @@ const {
 // @access  Private (User)
 router.get('/', auth, subscriptionController.getActiveSubscriptions);
 
+// @route   GET /api/subscriptions/public
+// @desc    Active plans for the website /pricing page (name, length, price only)
+// @access  Public
+router.get('/public', subscriptionController.getActiveSubscriptions);
+
 // @route   GET /api/subscriptions/:id
 // @desc    Get active subscription by ID
 // @access  Private (User)
