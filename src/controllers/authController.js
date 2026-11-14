@@ -615,95 +615,6 @@ const getCurrentUser = async (req, res) => {
   }
 };
 
-// @desc    Create admin user (no SMS verification)
-// @route   POST /api/auth/create-admin
-// @access  Private (SuperAdmin only)
-const createAdmin = async (req, res) => {
-  try {
-    // Check if user is authenticated and is superadmin
-    if (!req.user) {
-      const locale = errorMessageService.getLocaleFromRequest(req);
-      return res.status(401).json({
-        success: false,
-        message: errorMessageService.getMessage('UNAUTHORIZED', locale)
-      });
-    }
-
-    if (req.user.role !== 'superadmin') {
-      const locale = errorMessageService.getLocaleFromRequest(req);
-      return res.status(403).json({
-        success: false,
-        message: errorMessageService.getMessage('ADMIN_REQUIRED', locale),
-        code: 'SUPERADMIN_REQUIRED'
-      });
-    }
-
-    const { phone, username, password, role = 'admin' } = req.body;
-
-    // Validate role
-    const adminRoles = ['superadmin', 'admin', 'operator'];
-    if (!adminRoles.includes(role)) {
-      return res.status(400).json({
-        success: false,
-        message: errorMessageService.getMessage('INVALID_ROLE_SUPERADMIN', errorMessageService.getLocaleFromRequest(req))
-      });
-    }
-
-    // Check if user already exists
-    const existingUser = await User.findOne({ phone });
-    if (existingUser) {
-      return res.status(400).json({
-        success: false,
-        message: errorMessageService.getMessage('USER_ALREADY_EXISTS', errorMessageService.getLocaleFromRequest(req))
-      });
-    }
-
-    // Create new admin user
-    const user = new User({
-      phone,
-      username,
-      password,
-      role,
-      isVerified: true,
-      isAdmin: ['superadmin', 'admin'].includes(role)
-    });
-
-    await user.save();
-
-    // Generate tokens
-    const token = generateToken(user._id, user.role);
-    const refreshToken = generateRefreshToken(user._id);
-
-    // Update last login
-    user.lastLogin = new Date();
-    await user.save();
-
-    res.status(201).json({
-      success: true,
-      message: errorMessageService.getMessage('ADMIN_USER_CREATED_SUCCESS', errorMessageService.getLocaleFromRequest(req)),
-      data: {
-        user: {
-          id: user._id,
-          phone: user.phone,
-          username: user.username,
-          role: user.role,
-          isAdmin: user.isAdmin,
-          isVerified: user.isVerified
-        },
-        token,
-        refreshToken
-      }
-    });
-
-  } catch (error) {
-    console.error('Create admin error:', error);
-    res.status(500).json({
-      success: false,
-      message: errorMessageService.getMessage('INTERNAL_SERVER_ERROR', errorMessageService.getLocaleFromRequest(req))
-    });
-  }
-};
-
 module.exports = {
   sendVerificationCode: sendVerificationCodeController,
   verifyCode,
@@ -713,6 +624,5 @@ module.exports = {
   logout,
   forgotPassword,
   resetPassword,
-  getCurrentUser,
-  createAdmin
+  getCurrentUser
 };

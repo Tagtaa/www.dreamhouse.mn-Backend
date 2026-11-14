@@ -1,8 +1,12 @@
 const User = require('../models/User');
+const Admin = require('../models/Admin');
 const Material = require('../models/Material');
 const Idea = require('../models/Idea');
 const Calculation = require('../models/Calculation');
 const errorMessageService = require('../services/errorMessageService');
+
+// Roles an app user (users collection) may hold
+const USER_ROLES = ['user', 'moderator'];
 // @desc    Change admin password
 // @route   POST /api/admin/change-password
 // @access  Admin
@@ -24,15 +28,15 @@ const changeAdminPassword = async (req, res) => {
       });
     }
 
-    // Password must be exactly 4 digits (before hashing)
-    if (!/^\d{4}$/.test(newPassword)) {
+    // Dashboard passwords: at least 4 characters
+    if (String(newPassword).length < 4) {
       return res.status(400).json({
         success: false,
-        message: errorMessageService.getMessage('PASSWORD_MUST_BE_4_DIGITS', errorMessageService.getLocaleFromRequest(req))
+        message: 'Password must be at least 4 characters'
       });
     }
 
-    const adminUser = await User.findById(req.user._id);
+    const adminUser = await Admin.findById(req.user._id);
 
     if (!adminUser) {
       return res.status(404).json({
@@ -219,16 +223,16 @@ const getAdmins = async (req, res) => {
       filter.username = { $regex: search, $options: 'i' };
     }
 
-    const admins = await User.find(filter)
+    const admins = await Admin.find(filter)
       .select('-password')
       .limit(limit)
       .skip(skip)
       .sort('-createdAt');
 
-    const total = await User.countDocuments(filter);
+    const total = await Admin.countDocuments(filter);
 
     // Get counts by role
-    const roleStats = await User.aggregate([
+    const roleStats = await Admin.aggregate([
       {
         $match: {
           role: { $in: ['admin', 'superadmin', 'operator'] }
@@ -319,9 +323,9 @@ const getUserById = async (req, res) => {
 // @access  Admin
 const updateAdmin = async (req, res) => {
   try {
-    const { username, email, role, isActive, phone } = req.body;
+    const { username, email, role, isActive, phone, password } = req.body;
 
-    const admin = await User.findById(req.params.id);
+    const admin = await Admin.findById(req.params.id);
 
     if (!admin) {
       return res.status(404).json({
@@ -346,15 +350,31 @@ const updateAdmin = async (req, res) => {
       });
     }
 
+    // Only a superadmin may change roles, activation or another admin's password
+    const isSuperadmin = req.user.role === 'superadmin';
+    const isSelf = admin._id.toString() === req.user._id.toString();
+    if (!isSuperadmin && (!isSelf || role !== undefined || isActive !== undefined)) {
+      return res.status(403).json({
+        success: false,
+        message: errorMessageService.getMessage('ADMIN_REQUIRED', errorMessageService.getLocaleFromRequest(req)),
+        code: 'SUPERADMIN_REQUIRED'
+      });
+    }
+
+    if (password !== undefined && password !== null && password !== '' && String(password).length < 4) {
+      return res.status(400).json({
+        success: false,
+        message: 'Password must be at least 4 characters'
+      });
+    }
+
     // Update fields if provided
     if (username !== undefined) admin.username = username;
-    if (email !== undefined) admin.email = email;
+    if (email !== undefined) admin.email = email || undefined;
     if (phone !== undefined) admin.phone = phone;
-    if (role !== undefined) {
-      admin.role = role;
-      admin.isAdmin = ['admin', 'superadmin'].includes(role);
-    }
+    if (role !== undefined) admin.role = role;
     if (isActive !== undefined) admin.isActive = isActive;
+    if (password) admin.password = password; // hashed by pre-save hook
 
     await admin.save();
 
@@ -397,7 +417,15 @@ const updateAdmin = async (req, res) => {
 // @access  Admin
 const deleteAdmin = async (req, res) => {
   try {
-    const admin = await User.findById(req.params.id);
+    if (req.user.role !== 'superadmin') {
+      return res.status(403).json({
+        success: false,
+        message: errorMessageService.getMessage('ADMIN_REQUIRED', errorMessageService.getLocaleFromRequest(req)),
+        code: 'SUPERADMIN_REQUIRED'
+      });
+    }
+
+    const admin = await Admin.findById(req.params.id);
 
     if (!admin) {
       return res.status(404).json({
@@ -422,10 +450,8 @@ const deleteAdmin = async (req, res) => {
       });
     }
 
-    // Soft delete - deactivate account
+    // Soft delete - deactivate dashboard account (kept in admins collection)
     admin.isActive = false;
-    admin.role = 'user'; // Demote to user role
-    admin.isAdmin = false;
     await admin.save();
 
     res.status(200).json({
@@ -550,7 +576,8 @@ const updateUserRole = async (req, res) => {
   try {
     const { role } = req.body;
 
-    if (!['user', 'admin', 'moderator'].includes(role)) {
+    // App users can only be 'user' or 'moderator'. Dashboard admins live in the admins collection.
+    if (!USER_ROLES.includes(role)) {
       return res.status(400).json({
         success: false,
         message: errorMessageService.getMessage('INVALID_ROLE', errorMessageService.getLocaleFromRequest(req))
@@ -567,8 +594,7 @@ const updateUserRole = async (req, res) => {
     }
 
     user.role = role;
-    // Update isAdmin based on role
-    user.isAdmin = ['admin', 'superadmin'].includes(role);
+    user.isAdmin = false;
 
     await user.save();
 
@@ -1441,6 +1467,13 @@ const createManualUser = async (req, res) => {
   try {
     const { username, phone, password, role, email } = req.body;
 
+    if (role !== undefined && role !== null && role !== '' && !USER_ROLES.includes(role)) {
+      return res.status(400).json({
+        success: false,
+        message: errorMessageService.getMessage('INVALID_ROLE', errorMessageService.getLocaleFromRequest(req))
+      });
+    }
+
     // Validate required fields
     if (!username || !phone || !password) {
       return res.status(400).json({
@@ -1608,6 +1641,13 @@ const updateManualUser = async (req, res) => {
   try {
     const { username, phone, password, role, email, isActive } = req.body;
 
+    if (role !== undefined && role !== null && role !== '' && !USER_ROLES.includes(role)) {
+      return res.status(400).json({
+        success: false,
+        message: errorMessageService.getMessage('INVALID_ROLE', errorMessageService.getLocaleFromRequest(req))
+      });
+    }
+
     const user = await User.findById(req.params.id);
 
     if (!user) {
@@ -1648,9 +1688,9 @@ const updateManualUser = async (req, res) => {
     if (username !== undefined) user.username = username;
     if (phone !== undefined) user.phone = phone;
     if (password !== undefined) user.password = password; // Will be hashed by pre-save hook
-    if (role !== undefined) {
+    if (role) {
       user.role = role;
-      user.isAdmin = ['admin', 'superadmin'].includes(role);
+      user.isAdmin = false;
     }
     if (email !== undefined) user.email = email;
     if (isActive !== undefined) user.isActive = isActive;

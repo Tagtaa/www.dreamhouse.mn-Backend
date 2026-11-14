@@ -8,7 +8,8 @@ const {
   validateUsername,
   handleValidationErrors 
 } = require('../middleware/validation');
-const { auth } = require('../middleware/auth');
+const { auth, roleCheck } = require('../middleware/auth');
+const adminAuthController = require('../controllers/adminAuthController');
 
 // @route   POST /api/auth/send-code
 // @desc    Send SMS verification code
@@ -86,15 +87,13 @@ router.post('/reset-password',
 router.get('/me', auth, authController.getCurrentUser);
 
 // @route   POST /api/auth/create-admin
-// @desc    Create admin user (no SMS verification)
+// @desc    Legacy alias — creates a dashboard account in the admins collection.
+//          Prefer POST /api/admin-auth/admins.
 // @access  Private (SuperAdmin only)
 router.post('/create-admin',
   auth,
-  validatePhone(),
-  validateUsername(),
-  validatePassword(),
-  handleValidationErrors,
-  authController.createAdmin
+  roleCheck(['superadmin']),
+  adminAuthController.createAdmin
 );
 
 module.exports = router; 

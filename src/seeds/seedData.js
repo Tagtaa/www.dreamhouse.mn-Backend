@@ -3,6 +3,7 @@ const mongoose = require('mongoose');
 require('dotenv').config();
 
 const User = require('../models/User');
+const Admin = require('../models/Admin');
 const Material = require('../models/Material');
 const MaterialCategory = require('../models/MaterialCategory');
 const ParentCategory = require('../models/ParentCategory');
@@ -63,13 +64,16 @@ const heatingTypes = [
   { _id: 5, name: "Solar heating", description: "Solar-powered heating system", isActive: true }
 ];
 
-// Sample Users
-const sampleUsers = [{
+// Dashboard accounts (admins collection — separate from app users)
+const sampleAdmins = [{
   username: 'admin_user',
   phone: '+97699123456',
   password: '1234',
-  isAdmin: true
-}, {
+  role: 'superadmin'
+}];
+
+// Sample app users (users collection)
+const sampleUsers = [{
   username: 'publisher_user',
   phone: '+97699234567',
   password: '1234',
@@ -390,6 +394,7 @@ async function seedDatabase() {
 
     // Clear existing data
     await User.deleteMany();
+    await Admin.deleteMany();
     await Material.deleteMany();
     await MaterialCategory.deleteMany();
     await ParentCategory.deleteMany();
@@ -426,6 +431,12 @@ async function seedDatabase() {
       users.push(user);
     }
     console.log(`👥 Created ${users.length} users with hashed passwords`);
+
+    // Seed dashboard admins (save() hashes passwords)
+    for (const adminData of sampleAdmins) {
+      await new Admin(adminData).save();
+    }
+    console.log(`🛡️  Created ${sampleAdmins.length} dashboard admin(s)`);
 
     // Update idea author references
     sampleIdeas.forEach(idea => {

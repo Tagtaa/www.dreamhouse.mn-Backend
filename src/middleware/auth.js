@@ -1,7 +1,30 @@
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
+const Admin = require('../models/Admin');
 const errorMessageService = require('../services/errorMessageService');
 const { isTokenBlacklisted, updateSessionActivity } = require('../config/redis');
+
+const ADMIN_ROLES = Admin.ADMIN_ROLES;
+
+// Tokens issued by /api/admin-auth carry accountType: 'admin' and resolve
+// against the `admins` collection; every other token resolves against `users`.
+const loadAccount = (decoded) => {
+  if (decoded.accountType === 'admin') {
+    return Admin.findById(decoded.userId).select('-password');
+  }
+  return User.findById(decoded.userId).select('-password');
+};
+
+const isAdminAccount = (req) => req.accountType === 'admin';
+
+// App users can never act with admin privileges, even if an old record in
+// `users` still carries an admin role. In-memory only; not persisted here.
+const stripLegacyAdminRole = (user) => {
+  if (!user) return user;
+  if (ADMIN_ROLES.includes(user.role)) user.role = 'user';
+  user.isAdmin = false;
+  return user;
+};
 
 const auth = async (req, res, next) => {
   try {
@@ -46,9 +69,9 @@ const auth = async (req, res, next) => {
     }
 
     const decoded = jwt.verify(token, jwtSecret);
-    
-    const user = await User.findById(decoded.userId).select('-password');
-    
+
+    const user = await loadAccount(decoded);
+
     if (!user) {
       const locale = errorMessageService.getLocaleFromRequest(req);
       return res.status(401).json({
@@ -74,7 +97,8 @@ const auth = async (req, res, next) => {
       });
     }
 
-    req.user = user;
+    req.accountType = decoded.accountType === 'admin' ? 'admin' : 'user';
+    req.user = req.accountType === 'admin' ? user : stripLegacyAdminRole(user);
     req.token = token; // Store token for potential blacklisting
     
     // Update session activity (if Redis is available)
@@ -130,9 +154,12 @@ const optionalAuth = async (req, res, next) => {
       return next();
     }
     const decoded = jwt.verify(token, jwtSecret);
-    const user = await User.findById(decoded.userId).select('-password');
-    
-    req.user = user;
+    const user = await loadAccount(decoded);
+
+    req.accountType = user && decoded.accountType === 'admin' ? 'admin' : 'user';
+    req.user = user && user.isActive !== false
+      ? (req.accountType === 'admin' ? user : stripLegacyAdminRole(user))
+      : null;
     next();
   } catch (error) {
     req.user = null;
@@ -181,8 +208,8 @@ const admin = async (req, res, next) => {
       });
     }
 
-    // Check if user has admin, superadmin, or operator role
-    if (!['admin', 'superadmin', 'operator'].includes(req.user.role)) {
+    // Must be a dashboard account (admins collection) with an admin role
+    if (!isAdminAccount(req) || !ADMIN_ROLES.includes(req.user.role)) {
       const locale = errorMessageService.getLocaleFromRequest(req);
       return res.status(403).json({
         success: false,
@@ -248,8 +275,9 @@ const roleCheck = (allowedRoles) => {
         });
       }
 
-      // Check if user has one of the allowed roles
-      if (!allowedRoles.includes(req.user.role)) {
+      // Admin roles are only honoured on dashboard accounts (admins collection)
+      const needsAdminAccount = allowedRoles.some(role => ADMIN_ROLES.includes(role));
+      if (!allowedRoles.includes(req.user.role) || (needsAdminAccount && !isAdminAccount(req))) {
         const locale = errorMessageService.getLocaleFromRequest(req);
         return res.status(403).json({
           success: false,
@@ -276,5 +304,6 @@ module.exports = {
   premium,
   admin,
   moderator,
-  roleCheck
+  roleCheck,
+  isAdminAccount
 }; 

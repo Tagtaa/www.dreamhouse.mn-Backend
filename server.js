@@ -33,6 +33,7 @@ const authRoutes = require('./src/routes/authRoutes');
 const userRoutes = require('./src/routes/userRoutes');
 const materialRoutes = require('./src/routes/materialRoutes');
 const ideaRoutes = require('./src/routes/ideaRoutes');
+const adminAuthRoutes = require('./src/routes/adminAuthRoutes');
 const calculationRoutes = require('./src/routes/calculationRoutes');
 const ingredientsRoutes = require('./src/routes/ingredientsRoutes');
 const paymentRoutes = require('./src/routes/paymentRoutes');
@@ -99,7 +100,11 @@ const socketAuth = (socket, next) => {
     const decoded = jwt.verify(token, jwtSecret);
 
     socket.userId = decoded.userId;
-    socket.userRole = decoded.role || 'user';
+    socket.accountType = decoded.accountType === 'admin' ? 'admin' : 'user';
+    // Admin roles are only honoured on dashboard (admins collection) tokens
+    socket.userRole = socket.accountType === 'admin'
+      ? (decoded.role || 'admin')
+      : (['admin', 'superadmin', 'operator'].includes(decoded.role) ? 'user' : (decoded.role || 'user'));
 
     console.log(`🔌 Socket auth successful - User ID: ${socket.userId}, Role: ${socket.userRole}`);
 
@@ -152,7 +157,7 @@ io.on('connection', (socket) => {
     socket.join(`user_${socket.userId}`);
     console.log(`✅ User ${socket.userId} joined room: user_${socket.userId}`);
 
-    if (socket.userRole === 'admin') {
+    if (socket.accountType === 'admin') {
       socket.join('admin_room');
       console.log(`✅ Admin ${socket.userId} joined admin_room`);
 
@@ -535,6 +540,7 @@ app.get('/', (req, res) => {
 
 // API routes
 app.use('/api/auth', authRoutes);
+app.use('/api/admin-auth', adminAuthRoutes); // Dashboard accounts (admins collection)
 app.use('/api/user', csrfProtection, userRoutes);
 app.use('/api/materials', materialRoutes);
 app.use('/api/materials', csrfProtection, ingredientsRoutes);
