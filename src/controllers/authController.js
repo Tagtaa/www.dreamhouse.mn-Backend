@@ -2,6 +2,7 @@ const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const SmsVerification = require('../models/SmsVerification');
 const errorMessageService = require('../services/errorMessageService');
+const { getSmsParserPhone } = require('../services/appSettingsService');
 
 // Generate JWT token
 const generateToken = (userId, role) => {
@@ -76,7 +77,7 @@ const sendVerificationCodeController = async (req, res) => {
     await verification.save();
 
     // Get SMS Parser phone number from environment
-    const smsParserPhone = process.env.SMS_PARSER_PHONE_NUMBER || '88367853';
+    const smsParserPhone = await getSmsParserPhone();
 
     console.log(`📱 Generated OTP ${verificationCode} for ${phone}`);
     console.log(`📞 User should send this code to: ${smsParserPhone}`);
@@ -123,7 +124,7 @@ const verifyCode = async (req, res) => {
           message: errorMessageService.getMessage('OTP_NOT_CONFIRMED', errorMessageService.getLocaleFromRequest(req)),
           code: 'OTP_NOT_CONFIRMED',
           data: {
-            sendToNumber: process.env.SMS_PARSER_PHONE_NUMBER || '88367853',
+            sendToNumber: await getSmsParserPhone(),
             instructions: 'Send this OTP code via SMS to confirm it'
           }
         });
@@ -493,7 +494,7 @@ const forgotPassword = async (req, res) => {
     await verification.save();
 
     // Get SMS Parser phone number from environment
-    const smsParserPhone = process.env.SMS_PARSER_PHONE_NUMBER || '88367853';
+    const smsParserPhone = await getSmsParserPhone();
 
     console.log(`🔐 Generated password reset OTP ${verificationCode} for ${phone}`);
     console.log(`📞 User should send this code to: ${smsParserPhone}`);
@@ -551,7 +552,7 @@ const resetPassword = async (req, res) => {
           message: errorMessageService.getMessage('OTP_NOT_CONFIRMED', errorMessageService.getLocaleFromRequest(req)),
           code: 'OTP_NOT_CONFIRMED',
           data: {
-            sendToNumber: process.env.SMS_PARSER_PHONE_NUMBER || '88367853',
+            sendToNumber: await getSmsParserPhone(),
             instructions: 'Send this OTP code via SMS to confirm it'
           }
         });
@@ -593,6 +594,29 @@ const resetPassword = async (req, res) => {
   }
 };
 
+// @desc    Tell the website login whether a phone already has an account,
+//          so it can continue to the PIN step or to sign-up.
+//          (send-code already reveals this, so no new information is exposed.)
+// @route   POST /api/auth/check-phone
+// @access  Public
+const checkPhone = async (req, res) => {
+  try {
+    const { phone } = req.body;
+    const registered = Boolean(await User.exists({ phone }));
+
+    res.status(200).json({
+      success: true,
+      data: { phone, registered }
+    });
+  } catch (error) {
+    console.error('Check phone error:', error);
+    res.status(500).json({
+      success: false,
+      message: errorMessageService.getMessage('INTERNAL_SERVER_ERROR', errorMessageService.getLocaleFromRequest(req))
+    });
+  }
+};
+
 // @desc    Get current user
 // @route   GET /api/auth/me
 // @access  Private
@@ -624,5 +648,6 @@ module.exports = {
   logout,
   forgotPassword,
   resetPassword,
-  getCurrentUser
+  getCurrentUser,
+  checkPhone
 };

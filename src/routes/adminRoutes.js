@@ -35,6 +35,13 @@ router.use('/deposits', require('./depositRoutes'));
 // @access  Admin
 router.get('/dashboard', adminController.getDashboardAnalytics);
 
+// App Settings (Settings → Preferences)
+// @route   GET /api/admin/settings   — Admin
+// @route   PUT /api/admin/settings   — Superadmin (SMS parser phone for mobile app + website)
+const settingsController = require('../controllers/settingsController');
+router.get('/settings', settingsController.getSettings);
+router.put('/settings', roleCheck(['superadmin']), settingsController.updateSettings);
+
 // User Management
 // @route   GET /api/admin/users
 // @desc    Get users list
@@ -52,6 +59,15 @@ router.get('/admins',
   validatePagination(),
   handleValidationErrors,
   adminController.getAdmins
+);
+
+// @route   GET /api/admin/admins/:id
+// @desc    Get one admin (admin edit page)
+// @access  Admin
+router.get('/admins/:id',
+  validateObjectId(),
+  handleValidationErrors,
+  adminController.getAdminById
 );
 
 // @route   PUT /api/admin/admins/:id

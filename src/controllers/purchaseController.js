@@ -23,7 +23,9 @@ const getPurchases = async (req, res) => {
     const filter = {};
     
     if (phone) {
-      filter.phone = { $regex: phone, $options: 'i' };
+      // Escape special regex characters (especially + for phone numbers like +976)
+      const escapedPhone = phone.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      filter.phone = { $regex: escapedPhone, $options: 'i' };
     }
     if (orderId) {
       filter.orderId = { $regex: orderId, $options: 'i' };

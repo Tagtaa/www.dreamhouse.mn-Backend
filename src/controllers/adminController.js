@@ -368,6 +368,23 @@ const updateAdmin = async (req, res) => {
       });
     }
 
+    // Lock-out protection: no one can change their own role or deactivate themselves
+    if (isSelf && role !== undefined && role !== admin.role) {
+      return res.status(400).json({ success: false, message: "You can't change your own role" });
+    }
+    if (isSelf && isActive === false) {
+      return res.status(400).json({ success: false, message: "You can't deactivate your own account" });
+    }
+    // ...and the last active superadmin can't be demoted or deactivated
+    const losesSuperadmin = admin.role === 'superadmin' && admin.isActive &&
+      ((role !== undefined && role !== 'superadmin') || isActive === false);
+    if (losesSuperadmin) {
+      const otherSuperadmins = await Admin.countDocuments({ role: 'superadmin', isActive: true, _id: { $ne: admin._id } });
+      if (otherSuperadmins === 0) {
+        return res.status(400).json({ success: false, message: 'At least one active superadmin is required' });
+      }
+    }
+
     // Update fields if provided
     if (username !== undefined) admin.username = username;
     if (email !== undefined) admin.email = email || undefined;
@@ -382,19 +399,16 @@ const updateAdmin = async (req, res) => {
       success: true,
       message: errorMessageService.getMessage('ADMIN_UPDATED_SUCCESS', errorMessageService.getLocaleFromRequest(req)),
       data: {
-        admin: {
-          id: admin._id,
-          username: admin.username,
-          phone: admin.phone,
-          email: admin.email,
-          role: admin.role,
-          isAdmin: admin.isAdmin,
-          isActive: admin.isActive
-        }
+        admin: admin.toSafeJSON()
       }
     });
   } catch (error) {
     console.error('Update admin error:', error);
+
+    if (error.name === 'ValidationError') {
+      const first = Object.values(error.errors || {})[0];
+      return res.status(400).json({ success: false, message: first?.message || error.message });
+    }
 
     // Handle duplicate key errors
     if (error.code === 11000) {
@@ -405,6 +419,36 @@ const updateAdmin = async (req, res) => {
       });
     }
 
+    res.status(500).json({
+      success: false,
+      message: errorMessageService.getMessage('INTERNAL_SERVER_ERROR', errorMessageService.getLocaleFromRequest(req))
+    });
+  }
+};
+
+// @desc    Get one dashboard admin (admin edit page)
+// @route   GET /api/admin/admins/:id
+// @access  Admin
+const getAdminById = async (req, res) => {
+  try {
+    const admin = await Admin.findById(req.params.id).populate('createdBy', 'username');
+    if (!admin) {
+      return res.status(404).json({
+        success: false,
+        message: errorMessageService.getMessage('USER_NOT_FOUND', errorMessageService.getLocaleFromRequest(req))
+      });
+    }
+    res.status(200).json({
+      success: true,
+      data: {
+        admin: {
+          ...admin.toSafeJSON(),
+          createdBy: admin.createdBy ? { id: admin.createdBy._id, username: admin.createdBy.username } : null
+        }
+      }
+    });
+  } catch (error) {
+    console.error('Get admin error:', error);
     res.status(500).json({
       success: false,
       message: errorMessageService.getMessage('INTERNAL_SERVER_ERROR', errorMessageService.getLocaleFromRequest(req))
@@ -1639,7 +1683,18 @@ const getManualUserById = async (req, res) => {
 // @access  Admin
 const updateManualUser = async (req, res) => {
   try {
-    const { username, phone, password, role, email, isActive } = req.body;
+    const { username, phone, password, role, email, isActive, premiumDays } = req.body;
+
+    // premiumDays: whole days of premium from now; 0 ends premium (admin user edit page)
+    if (premiumDays !== undefined && premiumDays !== null) {
+      const days = Number(premiumDays);
+      if (!Number.isInteger(days) || days < 0 || days > 3650) {
+        return res.status(400).json({
+          success: false,
+          message: 'premiumDays must be a whole number between 0 and 3650'
+        });
+      }
+    }
 
     if (role !== undefined && role !== null && role !== '' && !USER_ROLES.includes(role)) {
       return res.status(400).json({
@@ -1692,8 +1747,20 @@ const updateManualUser = async (req, res) => {
       user.role = role;
       user.isAdmin = false;
     }
-    if (email !== undefined) user.email = email;
+    // Empty email clears it (stored as missing, so the unique+sparse index allows many users without one)
+    if (email !== undefined) user.email = email ? String(email).trim() : undefined;
     if (isActive !== undefined) user.isActive = isActive;
+    if (premiumDays !== undefined && premiumDays !== null) {
+      const days = Number(premiumDays);
+      if (days === 0) {
+        user.membership.type = 'free';
+        user.membership.expiresAt = null;
+      } else {
+        user.membership.type = 'premium';
+        user.membership.expiresAt = new Date(Date.now() + days * 24 * 60 * 60 * 1000);
+        if (!user.membership.purchasedAt) user.membership.purchasedAt = new Date();
+      }
+    }
 
     await user.save();
 
@@ -1709,6 +1776,7 @@ const updateManualUser = async (req, res) => {
           role: user.role,
           isActive: user.isActive,
           isAdmin: user.isAdmin,
+          membership: user.membership,
           updatedAt: user.updatedAt
         }
       }
@@ -1820,6 +1888,7 @@ module.exports = {
   getDashboardAnalytics,
   getUsers,
   getAdmins,
+  getAdminById,
   getUserById,
   updateAdmin,
   deleteAdmin,

@@ -11,6 +11,15 @@ const {
 const { auth, roleCheck } = require('../middleware/auth');
 const adminAuthController = require('../controllers/adminAuthController');
 
+// @route   POST /api/auth/check-phone
+// @desc    Is this phone already registered? (website login → PIN or sign-up)
+// @access  Public
+router.post('/check-phone',
+  validatePhone(),
+  handleValidationErrors,
+  authController.checkPhone
+);
+
 // @route   POST /api/auth/send-code
 // @desc    Send SMS verification code
 // @access  Public
