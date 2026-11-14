@@ -538,6 +538,13 @@ app.get('/', (req, res) => {
   });
 });
 
+// Support-chat images stored on this server (deleted with the chat by the retention job).
+// Cross-origin so the website and dashboard (other origins) can show them.
+app.use('/uploads/chat', (req, res, next) => {
+  res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+  next();
+}, express.static(path.join(__dirname, 'uploads', 'chat'), { index: false, dotfiles: 'deny', maxAge: '7d' }));
+
 // API routes
 app.use('/api/auth', authRoutes);
 app.use('/api/admin-auth', adminAuthRoutes); // Dashboard accounts (admins collection)
@@ -571,6 +578,9 @@ const startServer = async () => {
     console.log('📦 Connected to MongoDB');
 
     await initRedis();
+
+    // Delete support-chat messages/images older than the "Chat deletion" setting (hourly)
+    require('./src/services/chatRetentionService').startChatCleanupSchedule();
 
     // Start server with Socket.IO
     server.listen(PORT, () => {

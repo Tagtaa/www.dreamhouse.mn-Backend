@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { auth } = require('../middleware/auth');
+const { detectImageType } = require('../services/chatStorageService');
 const {
   sendMessage,
   sendImageMessage,
@@ -9,6 +10,7 @@ const {
   markMessagesAsRead,
   getUserConversation,
   getUserConversations,
+  getAdminUnreadCount,
   upload,
   // Anonymous chat functions
   sendAnonymousMessage,
@@ -22,11 +24,33 @@ const {
   sendAdminImageReplyToAnonymous
 } = require('../controllers/messageController');
 
+// Image upload with a clear 400 for wrong type / too large (instead of a 500)
+// and a check of the real file type (bytes), whatever the client declared
+const uploadImage = (req, res, next) => upload.single('image')(req, res, (err) => {
+  if (err) {
+    const message = err.code === 'LIMIT_FILE_SIZE' ? 'Image must be 10MB or smaller' : err.message;
+    return res.status(400).json({ success: false, message, code: 'INVALID_IMAGE' });
+  }
+  if (req.file && !detectImageType(req.file.buffer)) {
+    return res.status(400).json({ success: false, message: 'Only JPG, PNG, GIF or WEBP images are allowed', code: 'INVALID_IMAGE' });
+  }
+  return next();
+});
+
+// Unread chats count for the dashboard sidebar badge (admin)
+router.get('/admin/unread-count', auth, getAdminUnreadCount);
+
+// /dashboard/chat: one list of all chats, solved/unsolved status, delete (admin)
+const adminChat = require('../controllers/adminChatController');
+router.get('/admin/chats', auth, adminChat.getAllChats);
+router.put('/admin/chats/:id/status', auth, adminChat.setChatStatus);
+router.delete('/admin/chats/:id', auth, adminChat.deleteChat);
+
 // Send message - for both user and admin
 router.post('/send', auth, sendMessage);
 
 // Send image message (upload + message in single endpoint) - for both user and admin
-router.post('/send-image', auth, upload.single('image'), sendImageMessage);
+router.post('/send-image', auth, uploadImage, sendImageMessage);
 
 // Get user's own conversation
 router.get('/conversation', auth, getUserConversation);
@@ -62,7 +86,7 @@ router.post('/anonymous/send', sendAnonymousMessage);
 // @route   POST /api/messages/anonymous/send-image
 // @desc    Send anonymous image message
 // @access  Public
-router.post('/anonymous/send-image', upload.single('image'), sendAnonymousImageMessage);
+router.post('/anonymous/send-image', uploadImage, sendAnonymousImageMessage);
 
 // @route   POST /api/messages/anonymous/conversation
 // @desc    Get anonymous conversation
@@ -98,6 +122,6 @@ router.post('/anonymous/conversations/reply', auth, sendAdminReplyToAnonymous);
 // @route   POST /api/messages/anonymous/conversations/reply-image
 // @desc    Send admin image reply to anonymous conversation
 // @access  Admin
-router.post('/anonymous/conversations/reply-image', auth, upload.single('image'), sendAdminImageReplyToAnonymous);
+router.post('/anonymous/conversations/reply-image', auth, uploadImage, sendAdminImageReplyToAnonymous);
 
 module.exports = router;

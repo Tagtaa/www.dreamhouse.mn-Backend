@@ -65,6 +65,21 @@ const ConversationSchema = new mongoose.Schema({
   isActive: {
     type: Boolean,
     default: true
+  },
+  // Support status shown in /dashboard/chat. New chats start "unsolved";
+  // a new message from the user/guest reopens a solved chat (see Message model).
+  status: {
+    type: String,
+    enum: ['unsolved', 'solved'],
+    default: 'unsolved'
+  },
+  solvedAt: {
+    type: Date,
+    default: null
+  },
+  solvedBy: {
+    type: String, // admin id
+    default: null
   }
 }, {
   timestamps: true

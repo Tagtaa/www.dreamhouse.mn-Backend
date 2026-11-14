@@ -63,4 +63,18 @@ MessageSchema.index({ conversationId: 1, createdAt: -1 });
 MessageSchema.index({ senderId: 1, senderType: 1 });
 MessageSchema.index({ sessionId: 1, senderType: 1 });
 
+// A new message from the customer (user or guest) reopens a solved chat.
+// Works for every send path (app, website, text, image) in one place.
+MessageSchema.post('save', async function reopenSolvedChat(doc) {
+  if (!['user', 'anonymous'].includes(doc.senderType) || !doc.conversationId) return;
+  try {
+    await mongoose.model('Conversation').updateOne(
+      { _id: doc.conversationId, status: 'solved' },
+      { $set: { status: 'unsolved', solvedAt: null, solvedBy: null } }
+    );
+  } catch (error) {
+    console.error('Reopen solved chat error:', error.message);
+  }
+});
+
 module.exports = mongoose.model('Message', MessageSchema);

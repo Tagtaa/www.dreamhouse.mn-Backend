@@ -54,9 +54,45 @@ async function setSmsParserPhone(value, adminId) {
   return getSmsParserPhoneSetting();
 }
 
+// How long support-chat messages (text + images) are kept.
+const CHAT_RETENTION_KEY = 'chatRetention';
+const DAY_MS = 24 * 60 * 60 * 1000;
+const CHAT_RETENTION_OPTIONS = {
+  '1d': DAY_MS,
+  '2d': 2 * DAY_MS,
+  '1w': 7 * DAY_MS,
+  '2w': 14 * DAY_MS,
+  '1m': 30 * DAY_MS,
+  never: null
+};
+const DEFAULT_CHAT_RETENTION = 'never';
+
+async function getChatRetentionSetting() {
+  const doc = await AppSetting.findOne({ key: CHAT_RETENTION_KEY }).lean();
+  const value = doc && Object.prototype.hasOwnProperty.call(CHAT_RETENTION_OPTIONS, doc.value) ? doc.value : DEFAULT_CHAT_RETENTION;
+  return { value, updatedAt: doc ? doc.updatedAt : null };
+}
+
+async function setChatRetention(value, adminId) {
+  if (!Object.prototype.hasOwnProperty.call(CHAT_RETENTION_OPTIONS, value)) {
+    const err = new Error(`Chat deletion must be one of: ${Object.keys(CHAT_RETENTION_OPTIONS).join(', ')}`);
+    err.status = 400;
+    throw err;
+  }
+  await AppSetting.findOneAndUpdate(
+    { key: CHAT_RETENTION_KEY },
+    { value, updatedBy: adminId || null },
+    { upsert: true, new: true, setDefaultsOnInsert: true }
+  );
+  return getChatRetentionSetting();
+}
+
 module.exports = {
   getSmsParserPhone,
   getSmsParserPhoneSetting,
   setSmsParserPhone,
-  DEFAULT_SMS_PARSER_PHONE
+  DEFAULT_SMS_PARSER_PHONE,
+  CHAT_RETENTION_OPTIONS,
+  getChatRetentionSetting,
+  setChatRetention
 };

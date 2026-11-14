@@ -2,9 +2,8 @@ const Message = require('../models/Message');
 const Conversation = require('../models/Conversation');
 const User = require('../models/User');
 const AnonymousUser = require('../models/AnonymousUser');
-const { getBucket } = require('../config/firebase');
+const { saveChatImage, isAllowedImageType } = require('../services/chatStorageService');
 const multer = require('multer');
-const { v4: uuidv4 } = require('uuid');
 const errorMessageService = require('../services/errorMessageService');
 
 // Helper function to check if user has admin privileges
@@ -20,56 +19,15 @@ const upload = multer({
     fileSize: 10 * 1024 * 1024, // 10MB limit
   },
   fileFilter: (req, file, cb) => {
-    // Accept only image files
-    if (file.mimetype.startsWith('image/')) {
+    // Accept only JPG / PNG / GIF / WEBP (stored on this server)
+    if (isAllowedImageType(file.mimetype)) {
       cb(null, true);
     } else {
-      cb(new Error('Only image files are allowed'), false);
+      cb(new Error('Only JPG, PNG, GIF or WEBP images are allowed'), false);
     }
   }
 });
 
-// Upload image to Firebase Storage
-const uploadMessageImage = async (fileBuffer, fileName, senderId, conversationId) => {
-  try {
-    const bucket = getBucket();
-    const file = bucket.file(`messages/${conversationId}/${senderId}/${fileName}`);
-    
-    const stream = file.createWriteStream({
-      metadata: {
-        contentType: 'image/jpeg'
-      },
-      public: true,
-      validation: 'md5'
-    });
-
-    return new Promise((resolve, reject) => {
-      stream.on('error', (error) => {
-        console.error('Upload error:', error);
-        reject(error);
-      });
-
-      stream.on('finish', async () => {
-        try {
-          // Make the file public
-          await file.makePublic();
-          
-          // Get the public URL
-          const publicUrl = `https://storage.googleapis.com/${bucket.name}/${file.name}`;
-          resolve(publicUrl);
-        } catch (error) {
-          console.error('Error making file public:', error);
-          reject(error);
-        }
-      });
-
-      stream.end(fileBuffer);
-    });
-  } catch (error) {
-    console.error('Firebase upload error:', error);
-    throw error;
-  }
-};
 
 // Send text message
 const sendMessage = async (req, res) => {
@@ -390,6 +348,40 @@ const markMessagesAsRead = async (req, res) => {
   }
 };
 
+// @desc    Unread chats for the dashboard sidebar badge
+// @route   GET /api/messages/admin/unread-count
+// @access  Admin
+const getAdminUnreadCount = async (req, res) => {
+  try {
+    if (!isAdminRole(req.user.role)) {
+      return res.status(403).json({
+        success: false,
+        message: errorMessageService.getMessage('ADMIN_ACCESS_REQUIRED', errorMessageService.getLocaleFromRequest(req)),
+        code: 'ADMIN_ACCESS_REQUIRED'
+      });
+    }
+
+    const [stats] = await Conversation.aggregate([
+      { $match: { isActive: true, 'unreadCount.admin': { $gt: 0 } } },
+      { $group: { _id: null, conversations: { $sum: 1 }, messages: { $sum: '$unreadCount.admin' } } }
+    ]);
+
+    res.json({
+      success: true,
+      data: {
+        unreadConversations: stats?.conversations || 0,
+        unreadMessages: stats?.messages || 0
+      }
+    });
+  } catch (error) {
+    console.error('Get admin unread count error:', error);
+    res.status(500).json({
+      success: false,
+      message: errorMessageService.getMessage('INTERNAL_SERVER_ERROR', errorMessageService.getLocaleFromRequest(req))
+    });
+  }
+};
+
 // Get user's own conversation
 const getUserConversation = async (req, res) => {
   try {
@@ -472,14 +464,8 @@ const sendImageMessage = async (req, res) => {
       }
     }
 
-    // Upload image to Firebase
-    const fileName = `${uuidv4()}-${req.file.originalname}`;
-    const imageUrl = await uploadMessageImage(
-      req.file.buffer, 
-      fileName, 
-      senderId, 
-      conversation._id
-    );
+    // Store image on this server (uploads/chat/<conversationId>/)
+    const imageUrl = await saveChatImage(req, req.file, conversation._id);
 
     // Create message
     const message = new Message({
@@ -759,14 +745,8 @@ const sendAnonymousImageMessage = async (req, res) => {
       await conversation.save();
     }
 
-    // Upload image to Firebase
-    const fileName = `anon_${uuidv4()}-${req.file.originalname}`;
-    const imageUrl = await uploadMessageImage(
-      req.file.buffer, 
-      fileName, 
-      sessionId, 
-      conversation._id
-    );
+    // Store image on this server (uploads/chat/<conversationId>/)
+    const imageUrl = await saveChatImage(req, req.file, conversation._id);
 
     // Create message
     const message = new Message({
@@ -1124,36 +1104,8 @@ const sendAdminImageReplyToAnonymous = async (req, res) => {
       });
     }
 
-    // Upload image to Firebase Storage
-    const bucket = getBucket();
-    const fileName = `admin-images/${Date.now()}-${Math.round(Math.random() * 1E9)}-${req.file.originalname}`;
-    const file = bucket.file(fileName);
-
-    const stream = file.createWriteStream({
-      metadata: {
-        contentType: req.file.mimetype,
-      },
-    });
-
-    const imageUrl = await new Promise((resolve, reject) => {
-      stream.on('error', (error) => {
-        console.error('Firebase upload error:', error);
-        reject(error);
-      });
-
-      stream.on('finish', async () => {
-        try {
-          await file.makePublic();
-          const publicUrl = `https://storage.googleapis.com/${bucket.name}/${fileName}`;
-          resolve(publicUrl);
-        } catch (error) {
-          console.error('Firebase makePublic error:', error);
-          reject(error);
-        }
-      });
-
-      stream.end(req.file.buffer);
-    });
+    // Store image on this server (uploads/chat/<conversationId>/)
+    const imageUrl = await saveChatImage(req, req.file, conversation._id);
 
     // Create admin image message
     const message = new Message({
@@ -1317,7 +1269,8 @@ const getUserConversations = async (req, res) => {
 
     // Get all active conversations with user info and last message
     const conversations = await Conversation.find({ isActive: true })
-      .populate('userId', 'firstName lastName email phoneNumber profileImage createdAt lastLogin')
+      // App users have username + phone (no firstName/lastName/phoneNumber fields)
+      .populate('userId', 'username phone email profileImage createdAt lastLogin')
       .populate('lastMessage')
       .sort({ lastMessageAt: -1 }) // Most recent first
       .skip(skip)
@@ -1352,10 +1305,10 @@ const getUserConversations = async (req, res) => {
         conversationId: conv._id,
         user: user ? {
           _id: user._id,
-          firstName: user.firstName,
-          lastName: user.lastName,
+          username: user.username,
+          phone: user.phone,
           email: user.email,
-          phoneNumber: user.phoneNumber,
+          phoneNumber: user.phone, // kept for existing dashboard code
           profileImage: user.profileImage,
           createdAt: user.createdAt,
           lastLogin: user.lastLogin
@@ -1399,6 +1352,7 @@ module.exports = {
   markMessagesAsRead,
   getUserConversation,
   getUserConversations, // New endpoint
+  getAdminUnreadCount,
   upload, // Multer middleware'ini export et
   // Anonymous chat functions
   sendAnonymousMessage,
