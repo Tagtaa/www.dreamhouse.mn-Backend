@@ -1,0 +1,265 @@
+{
+  "success": true,
+  "data": {
+    "user": {
+      "_id": "693e8e0afa25eb08d959e299",
+      "phone": "+905551234567",
+      "username": "john_doe",
+      "displayName": "john_doe"
+    },
+    "calculations": [
+      {
+        "_id": "693e94c30a36b54859dd89ef",
+        "type": "wall",
+        "typeName": "Wall",
+        "materialName": "Premium Red Brick",
+        "materialImageUrl": "https://example.com/images/brick.jpg",
+        "shapeInfo": {
+          "name": "Rectangular",
+          "description": "Standard rectangular wall shape",
+          "imageUrl": "https://example.com/images/rectangular.jpg"
+        },
+        "thicknessInfo": {
+          "name": "25cm",
+          "thickness": 25,
+          "unit": "cm"
+        },
+        "isBookmarked": false,
+        "isShared": false,
+        "sharedWith": [],
+        "createdAt": "2025-01-14T10:43:15.099Z",
+        "updatedAt": "2025-01-14T10:43:15.099Z",
+        "lastAccessedAt": "2025-01-14T10:43:15.099Z",
+        "inputs": {
+          "selectedTypeModel": {
+            "id": "693e8e0afa25eb08d959e299",
+            "calculationType": "wall",
+            "name": "Wall",
+            "key": "wall"
+          },
+          "selectedShapeModel": {
+            "id": "693e8e0afa25eb08d959e2a1",
+            "name": "Rectangular",
+            "key": "rectangular"
+          },
+          "selectedMaterialModel": {
+            "_id": "693e92ad251256b3ab0da9d6",
+            "name": "Premium Red Brick",
+            "price": 850,
+            "unit": "piece",
+            "images": ["https://example.com/images/brick.jpg"]
+          },
+          "selectedThicknessModel": {
+            "id": "693e8e0afa25eb08d959e2a2",
+            "name": "25cm",
+            "thickness": 25,
+            "unit": "cm"
+          },
+          "totalPrice": 50000,
+          "totalArea": 120.5,
+          "totalVolume": null,
+          "materialItemCount": 100,
+          "doorList": [
+            {
+              "width": 0.9,
+              "height": 2.1
+            },
+            {
+              "width": 0.8,
+              "height": 2.0
+            }
+          ],
+          "windowList": [
+            {
+              "width": 1.2,
+              "height": 1.5
+            },
+            {
+              "width": 1.0,
+              "height": 1.2
+            }
+          ],
+          "ingCalcModelList": [
+            {
+              "_id": "6941186e88190486af6d7d35",
+              "name": "cement",
+              "unit": "m3",
+              "percentValue": 38,
+              "pricePerM3": 41
+            },
+            {
+              "_id": "6941183688190486af6d7cd2",
+              "name": "sand",
+              "unit": "m2",
+              "percentValue": 19,
+              "pricePerM2": 60
+            }
+          ],
+          "calculationCustomModel": null,
+          "blockLength": null,
+          "blockWidth": null,
+          "blockHeight": null,
+          "blockThickness": null,
+          "imageUrl": "https://example.com/images/brick.jpg"
+        },
+        "results": {
+          "area": 120.5,
+          "volume": null,
+          "perimeter": 45.2,
+          "materials": [
+            {
+              "materialId": "693e92ad251256b3ab0da9d6",
+              "quantity": 100,
+              "unit": "piece",
+              "unitPrice": 850,
+              "totalPrice": 85000,
+              "type": "main_material",
+              "name": "Premium Red Brick"
+            }
+          ],
+          "ingredients": [
+            {
+              "type": "ingredient",
+              "name": "cement",
+              "quantity": 50,
+              "unit": "kg",
+              "unitPrice": 50,
+              "totalPrice": 2500,
+              "parentMaterial": "Premium Red Brick",
+              "description": "Required for Premium Red Brick"
+            },
+            {
+              "type": "ingredient",
+              "name": "sand",
+              "quantity": 25,
+              "unit": "m2",
+              "unitPrice": 60,
+              "totalPrice": 1500,
+              "parentMaterial": "Premium Red Brick",
+              "description": "Required for Premium Red Brick"
+            }
+          ],
+          "totalArea": 120.5,
+          "totalVolume": null,
+          "totalMaterialCost": 50000,
+          "estimatedLaborCost": 15000,
+          "totalCost": 65000,
+          "openings": {
+            "windows": {
+              "area": 3.0,
+              "count": 2
+            },
+            "doors": {
+              "area": 3.49,
+              "count": 2
+            }
+          }
+        },
+        "summary": {
+          "totalPrice": 50000,
+          "totalVolume": null,
+          "totalArea": 120.5,
+          "materialItemCount": 100,
+          "doorCount": 2,
+          "windowCount": 2,
+          "ingredientCount": 2
+        },
+        "totalPrice": 50000
+      },
+      {
+        "_id": "693e94c20a36b54859dd89e8",
+        "type": "roof",
+        "typeName": "Roof",
+        "materialName": "Roof Tiles",
+        "materialImageUrl": "https://images.unsplash.com/photo-1513694203232-719a280e022f?w=400&h=300&fit=crop",
+        "shapeInfo": {
+          "name": "Gable",
+          "description": "Standard gable roof shape",
+          "imageUrl": "https://example.com/images/gable.jpg"
+        },
+        "thicknessInfo": null,
+        "isBookmarked": true,
+        "isShared": false,
+        "sharedWith": [],
+        "createdAt": "2025-01-13T08:30:00.000Z",
+        "updatedAt": "2025-01-13T08:30:00.000Z",
+        "lastAccessedAt": "2025-01-13T08:30:00.000Z",
+        "inputs": {
+          "selectedTypeModel": {
+            "id": "693e8e0afa25eb08d959e2a3",
+            "calculationType": "roof",
+            "name": "Roof",
+            "key": "roof"
+          },
+          "selectedShapeModel": {
+            "id": "693e8e0afa25eb08d959e2a4",
+            "name": "Gable",
+            "key": "gable"
+          },
+          "selectedMaterialModel": null,
+          "selectedThicknessModel": null,
+          "totalPrice": 75000,
+          "totalArea": null,
+          "totalVolume": 150.0,
+          "materialItemCount": 200,
+          "doorList": [],
+          "windowList": [
+            {
+              "width": 0.6,
+              "height": 0.6
+            }
+          ],
+          "ingCalcModelList": [],
+          "calculationCustomModel": {
+            "name": "Custom Roof Material",
+            "imageUrl": "https://example.com/images/custom-roof.jpg"
+          },
+          "blockLength": null,
+          "blockWidth": null,
+          "blockHeight": null,
+          "blockThickness": null,
+          "imageUrl": "https://example.com/images/custom-roof.jpg"
+        },
+        "results": {
+          "area": null,
+          "volume": 150.0,
+          "perimeter": null,
+          "materials": [],
+          "ingredients": [],
+          "totalArea": null,
+          "totalVolume": 150.0,
+          "totalMaterialCost": 75000,
+          "estimatedLaborCost": 22500,
+          "totalCost": 97500,
+          "openings": {
+            "windows": {
+              "area": 0.36,
+              "count": 1
+            },
+            "doors": {
+              "area": 0,
+              "count": 0
+            }
+          }
+        },
+        "summary": {
+          "totalPrice": 75000,
+          "totalVolume": 150.0,
+          "totalArea": null,
+          "materialItemCount": 200,
+          "doorCount": 0,
+          "windowCount": 1,
+          "ingredientCount": 0
+        },
+        "totalPrice": 75000
+      }
+    ],
+    "pagination": {
+      "page": 1,
+      "limit": 20,
+      "total": 2,
+      "pages": 1
+    }
+  }
+}
+
