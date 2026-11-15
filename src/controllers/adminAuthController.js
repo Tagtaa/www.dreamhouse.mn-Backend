@@ -114,7 +114,10 @@ const getMe = async (req, res) => {
 // @access  Admin
 const updateProfile = async (req, res) => {
   try {
-    const { username, email } = req.body;
+    const { username, email, language } = req.body;
+    if (language !== undefined && !['mn', 'en'].includes(language)) {
+      return res.status(400).json({ success: false, message: 'Language must be mn or en' });
+    }
     const admin = await Admin.findById(req.user._id);
     if (!admin) {
       return res.status(404).json({ success: false, message: msg(req, 'USER_NOT_FOUND') });
@@ -122,6 +125,7 @@ const updateProfile = async (req, res) => {
 
     if (username !== undefined) admin.username = String(username).trim();
     if (email !== undefined) admin.email = email ? String(email).trim() : undefined;
+    if (language !== undefined) admin.language = language;
     await admin.save();
 
     res.status(200).json({

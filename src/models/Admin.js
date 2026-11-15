@@ -4,6 +4,8 @@ const bcrypt = require('bcryptjs');
 // Dashboard (admin panel) accounts. Stored in the `admins` collection,
 // fully separate from app users in `users`.
 const ADMIN_ROLES = ['superadmin', 'admin', 'operator'];
+// Dashboard language each admin picks for themselves (Settings → Basic Information)
+const ADMIN_LANGUAGES = ['mn', 'en'];
 
 const adminSchema = new mongoose.Schema({
   phone: {
@@ -44,6 +46,11 @@ const adminSchema = new mongoose.Schema({
   isActive: {
     type: Boolean,
     default: true
+  },
+  language: {
+    type: String,
+    enum: ADMIN_LANGUAGES,
+    default: 'mn'
   },
   profileImage: {
     type: String,
@@ -103,6 +110,7 @@ adminSchema.methods.toSafeJSON = function () {
     role: this.role,
     isAdmin: this.isAdmin,
     isActive: this.isActive,
+    language: this.language || 'mn',
     profileImage: this.profileImage,
     lastLogin: this.lastLogin,
     accountType: 'admin',
