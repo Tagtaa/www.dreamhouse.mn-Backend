@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const { requirePermission: can } = require('../middleware/auth');
 const smsParserController = require('../controllers/smsParserController');
 const { auth, admin } = require('../middleware/auth');
 const { body, query, param } = require('express-validator');
@@ -111,7 +112,7 @@ router.post('/bank-transaction',
 // @access  Private (Admin)
 router.get('/transactions',
   auth,
-  admin,
+  admin, can('sms_parser.view'),
   [
     query('page')
       .optional()
@@ -147,7 +148,7 @@ router.get('/transactions',
 // @access  Private (Admin)
 router.post('/transactions/:id/retry',
   auth,
-  admin,
+  admin, can('sms_parser.retry'),
   smsParserController.retryBankTransaction
 );
 
@@ -155,6 +156,9 @@ router.post('/transactions/:id/retry',
 // @desc    Get SMS Parser response statistics
 // @access  Public (with SMS Parser API key)
 router.get('/responses/stats',
+  auth,
+  admin,
+  can('sms_parser.view'),
   validateSmsParserApiKey,
   [
     query('endpoint')
@@ -186,6 +190,9 @@ router.get('/responses/stats',
 // @desc    Get SMS Parser error summary
 // @access  Public (with SMS Parser API key)
 router.get('/responses/errors',
+  auth,
+  admin,
+  can('sms_parser.view'),
   validateSmsParserApiKey,
   [
     query('days')
@@ -201,6 +208,9 @@ router.get('/responses/errors',
 // @desc    Get SMS Parser responses with pagination
 // @access  Public (with SMS Parser API key)
 router.get('/responses',
+  auth,
+  admin,
+  can('sms_parser.view'),
   validateSmsParserApiKey,
   [
     query('page')
@@ -244,6 +254,9 @@ router.get('/responses',
 // @desc    Cleanup old SMS Parser responses
 // @access  Public (with SMS Parser API key)
 router.post('/responses/cleanup',
+  auth,
+  admin,
+  can('sms_parser.delete'),
   validateSmsParserApiKey,
   [
     body('days')
@@ -259,6 +272,9 @@ router.post('/responses/cleanup',
 // @desc    Delete single SMS Parser response
 // @access  Public (with SMS Parser API key)
 router.delete('/responses/:id',
+  auth,
+  admin,
+  can('sms_parser.delete'),
   validateSmsParserApiKey,
   [
     param('id')
@@ -273,6 +289,9 @@ router.delete('/responses/:id',
 // @desc    Delete multiple SMS Parser responses
 // @access  Public (with SMS Parser API key)
 router.delete('/responses',
+  auth,
+  admin,
+  can('sms_parser.delete'),
   validateSmsParserApiKey,
   [
     body('ids')

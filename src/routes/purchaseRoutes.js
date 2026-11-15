@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const purchaseController = require('../controllers/purchaseController');
-const { auth, admin } = require('../middleware/auth');
+const { auth, admin, requirePermission: can } = require('../middleware/auth');
 const { 
   validateObjectId,
   validatePagination,
@@ -17,6 +17,7 @@ router.use(auth, admin);
 // @desc    Get purchases list with filtering
 // @access  Admin
 router.get('/',
+  can('purchases.view'),
   validatePagination(),
   handleValidationErrors,
   purchaseController.getPurchases
@@ -26,6 +27,7 @@ router.get('/',
 // @desc    Get purchase details
 // @access  Admin
 router.get('/:id',
+  can('purchases.view'),
   validateObjectId(),
   handleValidationErrors,
   purchaseController.getPurchaseById
@@ -34,7 +36,8 @@ router.get('/:id',
 // @route   POST /api/admin/purchases
 // @desc    Create new purchase
 // @access  Admin
-router.post('/', 
+router.post('/',
+  can('purchases.create'),
   validatePurchase(),
   handleValidationErrors,
   purchaseController.createPurchase
@@ -44,6 +47,7 @@ router.post('/',
 // @desc    Update purchase status
 // @access  Admin
 router.put('/:id/status',
+  can('purchases.status'),
   validateObjectId(),
   validateTransactionStatus(),
   handleValidationErrors,
@@ -54,6 +58,7 @@ router.put('/:id/status',
 // @desc    Delete purchase
 // @access  Admin
 router.delete('/:id',
+  can('purchases.delete'),
   validateObjectId(),
   handleValidationErrors,
   purchaseController.deletePurchase

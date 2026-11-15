@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const { requirePermission: can } = require('../middleware/auth');
 const materialController = require('../controllers/materialController');
 const ingredientNameController = require('../controllers/ingredientNameController');
 const { auth, optionalAuth, premium, admin } = require('../middleware/auth');
@@ -55,17 +56,17 @@ router.get('/categories', materialController.getCategories);
 // @route   POST /api/materials/categories
 // @desc    Create material category
 // @access  Admin
-router.post('/categories', auth, admin, materialController.createCategory);
+router.post('/categories', auth, admin, can('material_categories.create'), materialController.createCategory);
 
 // @route   PUT /api/materials/categories/:id
 // @desc    Update material category
 // @access  Admin
-router.put('/categories/:id', auth, admin, materialController.updateCategory);
+router.put('/categories/:id', auth, admin, can('material_categories.edit'), materialController.updateCategory);
 
 // @route   DELETE /api/materials/categories/:id
 // @desc    Delete material category (soft delete)
 // @access  Admin
-router.delete('/categories/:id', auth, admin, materialController.deleteCategory);
+router.delete('/categories/:id', auth, admin, can('material_categories.delete'), materialController.deleteCategory);
 
 // Parent categories routes
 // @route   GET /api/materials/parent-categories
@@ -76,12 +77,12 @@ router.get('/parent-categories', materialController.getParentCategories);
 // @route   POST /api/materials/parent-categories
 // @desc    Create parent category
 // @access  Admin
-router.post('/parent-categories', auth, admin, materialController.createParentCategory);
+router.post('/parent-categories', auth, admin, can('material_categories.create'), materialController.createParentCategory);
 
 // @route   DELETE /api/materials/parent-categories/:id
 // @desc    Delete parent category (soft delete)
 // @access  Admin
-router.delete('/parent-categories/:id', auth, admin, materialController.deleteParentCategory);
+router.delete('/parent-categories/:id', auth, admin, can('material_categories.delete'), materialController.deleteParentCategory);
 
 // Ingredient Names routes
 // @route   GET /api/materials/ingredient-names
@@ -109,7 +110,7 @@ router.get('/ingredient-names/:id',
 // @access  Admin
 router.post('/ingredient-names',
   auth,
-  admin,
+  admin, can('material_categories.create'),
   validateIngredientName(),
   handleValidationErrors,
   ingredientNameController.createIngredientName
@@ -120,7 +121,7 @@ router.post('/ingredient-names',
 // @access  Admin
 router.put('/ingredient-names/:id',
   auth,
-  admin,
+  admin, can('material_categories.edit'),
   validateObjectId(),
   validateIngredientNameUpdate(),
   handleValidationErrors,
@@ -132,7 +133,7 @@ router.put('/ingredient-names/:id',
 // @access  Admin
 router.delete('/ingredient-names/:id',
   auth,
-  admin,
+  admin, can('material_categories.delete'),
   validateObjectId(),
   handleValidationErrors,
   ingredientNameController.deleteIngredientName
@@ -210,7 +211,7 @@ router.post('/:id/toggle-like',
 // @access  Admin
 router.post('/',
   auth,
-  admin,
+  admin, can('materials.create'),
   materialController.createMaterial
 );
 
@@ -219,7 +220,7 @@ router.post('/',
 // @access  Admin
 router.put('/:id',
   auth,
-  admin,
+  admin, can('materials.edit'),
   validateObjectId(),
   handleValidationErrors,
   materialController.updateMaterial
@@ -230,7 +231,7 @@ router.put('/:id',
 // @access  Admin
 router.delete('/:id',
   auth,
-  admin,
+  admin, can('materials.delete'),
   validateObjectId(),
   handleValidationErrors,
   materialController.deleteMaterial

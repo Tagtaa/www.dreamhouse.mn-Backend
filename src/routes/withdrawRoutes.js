@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const withdrawController = require('../controllers/withdrawController');
-const { auth, admin } = require('../middleware/auth');
+const { auth, admin, requirePermission: can } = require('../middleware/auth');
 const { 
   validateObjectId,
   validatePagination,
@@ -17,6 +17,7 @@ router.use(auth, admin);
 // @desc    Get withdrawals list with filtering
 // @access  Admin
 router.get('/',
+  can('withdrawals.view'),
   validatePagination(),
   handleValidationErrors,
   withdrawController.getWithdrawals
@@ -26,6 +27,7 @@ router.get('/',
 // @desc    Get withdrawal details
 // @access  Admin
 router.get('/:id',
+  can('withdrawals.view'),
   validateObjectId(),
   handleValidationErrors,
   withdrawController.getWithdrawalById
@@ -34,7 +36,8 @@ router.get('/:id',
 // @route   POST /api/admin/withdrawals
 // @desc    Create new withdrawal
 // @access  Admin
-router.post('/', 
+router.post('/',
+  can('withdrawals.create'),
   validateWithdrawal(),
   handleValidationErrors,
   withdrawController.createWithdrawal
@@ -44,6 +47,7 @@ router.post('/',
 // @desc    Update withdrawal (full update)
 // @access  Admin
 router.put('/:id',
+  can('withdrawals.edit'),
   validateObjectId(),
   handleValidationErrors,
   withdrawController.updateWithdrawal
@@ -53,6 +57,7 @@ router.put('/:id',
 // @desc    Update withdrawal status
 // @access  Admin
 router.put('/:id/status',
+  can('withdrawals.status'),
   validateObjectId(),
   validateTransactionStatus(),
   handleValidationErrors,
@@ -63,6 +68,7 @@ router.put('/:id/status',
 // @desc    Delete withdrawal
 // @access  Admin
 router.delete('/:id',
+  can('withdrawals.delete'),
   validateObjectId(),
   handleValidationErrors,
   withdrawController.deleteWithdrawal

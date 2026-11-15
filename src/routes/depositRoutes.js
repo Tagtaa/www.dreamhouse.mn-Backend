@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const depositController = require('../controllers/depositController');
-const { auth, admin } = require('../middleware/auth');
+const { auth, admin, requirePermission: can } = require('../middleware/auth');
 const { 
   validateObjectId,
   validatePagination,
@@ -17,6 +17,7 @@ router.use(auth, admin);
 // @desc    Get deposits list with filtering
 // @access  Admin
 router.get('/',
+  can('deposits.view'),
   validatePagination(),
   handleValidationErrors,
   depositController.getDeposits
@@ -26,6 +27,7 @@ router.get('/',
 // @desc    Get deposit details
 // @access  Admin
 router.get('/:id',
+  can('deposits.view'),
   validateObjectId(),
   handleValidationErrors,
   depositController.getDepositById
@@ -34,7 +36,8 @@ router.get('/:id',
 // @route   POST /api/admin/deposits
 // @desc    Create new deposit (status: wrong, needs admin approval)
 // @access  Admin
-router.post('/', 
+router.post('/',
+  can('deposits.create'),
   validateDeposit(),
   handleValidationErrors,
   depositController.createDeposit
@@ -44,6 +47,7 @@ router.post('/',
 // @desc    Update wrong deposit (only for wrong transactions)
 // @access  Admin
 router.put('/:id',
+  can('deposits.edit'),
   validateObjectId(),
   handleValidationErrors,
   depositController.updateDeposit
@@ -53,6 +57,7 @@ router.put('/:id',
 // @desc    Update deposit notes (status automatically determined by phone)
 // @access  Admin
 router.put('/:id/status',
+  can('deposits.status'),
   validateObjectId(),
   handleValidationErrors,
   depositController.updateDepositStatus
@@ -62,6 +67,7 @@ router.put('/:id/status',
 // @desc    Delete deposit
 // @access  Admin
 router.delete('/:id',
+  can('deposits.delete'),
   validateObjectId(),
   handleValidationErrors,
   depositController.deleteDeposit

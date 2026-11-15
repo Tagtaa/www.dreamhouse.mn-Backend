@@ -1,5 +1,5 @@
 const express = require('express');
-const { auth, admin, roleCheck } = require('../middleware/auth');
+const { auth, admin, requirePermission } = require('../middleware/auth');
 const adminAuthController = require('../controllers/adminAuthController');
 
 const router = express.Router();
@@ -23,6 +23,6 @@ router.put('/profile', auth, admin, adminAuthController.updateProfile);
 
 // @route   POST /api/admin-auth/admins
 // @access  Superadmin only
-router.post('/admins', auth, roleCheck(['superadmin']), adminAuthController.createAdmin);
+router.post('/admins', auth, admin, requirePermission('admins.create'), adminAuthController.createAdmin);
 
 module.exports = router;

@@ -914,7 +914,7 @@ const getHistory = async (req, res) => {
     const isBookmarked = req.query.bookmarked === 'true';
     
     // Check if user is admin
-    const isAdmin = ['admin', 'superadmin', 'operator'].includes(req.user.role);
+    const isAdmin = req.accountType === 'admin'; // dashboard account
     
     // Build query based on admin status
     let query = {};
@@ -1575,7 +1575,7 @@ const deleteCalculation = async (req, res) => {
     }
 
     // Check if user is admin
-    const isAdmin = ['admin', 'superadmin', 'operator'].includes(req.user.role);
+    const isAdmin = req.accountType === 'admin'; // dashboard account
 
     // Only owner or admin can delete
     if (!isAdmin && calculation.userId.toString() !== req.user._id.toString()) {

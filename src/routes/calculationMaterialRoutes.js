@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const { requirePermission: can } = require('../middleware/auth');
 const calculationMaterialController = require('../controllers/calculationMaterialController');
 const { auth, admin } = require('../middleware/auth');
 const { 
@@ -42,15 +43,15 @@ router.get('/:type/choose-materials',
 
 // Create new calculation material for a specific calculation (Admin only)
 // POST /api/calculations/:type/choose-materials
-router.post('/:type/choose-materials', auth, admin, uploadImage, calculationMaterialController.createCalculationMaterial);
+router.post('/:type/choose-materials', auth, admin, can('calculations.create'), uploadImage, calculationMaterialController.createCalculationMaterial);
 
 // Update calculation material for a specific calculation (Admin only)
 // PUT /api/calculations/:type/choose-materials
-router.put('/:type/choose-materials', auth, admin, uploadImage, calculationMaterialController.updateCalculationMaterialByKey);
+router.put('/:type/choose-materials', auth, admin, can('calculations.edit'), uploadImage, calculationMaterialController.updateCalculationMaterialByKey);
 
 // Delete calculation material for a specific calculation (Admin only)
 // DELETE /api/calculations/:type/choose-materials
-router.delete('/:type/choose-materials', auth, admin, calculationMaterialController.deleteCalculationMaterialByKey);
+router.delete('/:type/choose-materials', auth, admin, can('calculations.delete'), calculationMaterialController.deleteCalculationMaterialByKey);
 
 // Get calculation material by ID
 // GET /api/calculations/choose-materials/:id
@@ -58,14 +59,14 @@ router.get('/choose-materials/:id', auth, calculationMaterialController.getCalcu
 
 // Create new calculation material (Admin only)
 // POST /api/calculations/choose-materials
-router.post('/choose-materials', auth, admin, calculationMaterialController.createCalculationMaterial);
+router.post('/choose-materials', auth, admin, can('calculations.create'), calculationMaterialController.createCalculationMaterial);
 
 // Update calculation material (Admin only)
 // PUT /api/calculations/choose-materials/:id
-router.put('/choose-materials/:id', auth, admin, calculationMaterialController.updateCalculationMaterial);
+router.put('/choose-materials/:id', auth, admin, can('calculations.edit'), calculationMaterialController.updateCalculationMaterial);
 
 // Delete calculation material (Admin only)
 // DELETE /api/calculations/choose-materials/:id
-router.delete('/choose-materials/:id', auth, admin, calculationMaterialController.deleteCalculationMaterial);
+router.delete('/choose-materials/:id', auth, admin, can('calculations.delete'), calculationMaterialController.deleteCalculationMaterial);
 
 module.exports = router;

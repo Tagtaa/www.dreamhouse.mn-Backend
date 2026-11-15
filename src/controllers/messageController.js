@@ -6,10 +6,8 @@ const { saveChatImage, isAllowedImageType } = require('../services/chatStorageSe
 const multer = require('multer');
 const errorMessageService = require('../services/errorMessageService');
 
-// Helper function to check if user has admin privileges
-const isAdminRole = (role) => {
-  return ['admin', 'superadmin', 'operator'].includes(role);
-};
+// Dashboard accounts (any role, incl. custom ones) act as support staff in chats
+const isAdminReq = (req) => req.accountType === 'admin';
 
 // Multer configuration for memory storage
 const storage = multer.memoryStorage();
@@ -34,7 +32,7 @@ const sendMessage = async (req, res) => {
   try {
     const { receiverId, content } = req.body;
     const senderId = req.user.id;
-    const senderType = isAdminRole(req.user.role) ? 'admin' : 'user';
+    const senderType = isAdminReq(req) ? 'admin' : 'user';
     const messageType = 'text';
 
     // Validate content
@@ -188,7 +186,7 @@ const sendMessage = async (req, res) => {
 // Get all conversations (admin only)
 const getConversations = async (req, res) => {
   try {
-    if (!isAdminRole(req.user.role)) {
+    if (!isAdminReq(req)) {
       return res.status(403).json({
         success: false,
         message: errorMessageService.getMessage('ADMIN_ACCESS_REQUIRED', errorMessageService.getLocaleFromRequest(req)),
@@ -236,7 +234,7 @@ const getConversations = async (req, res) => {
 // Get messages from a conversation
 const getMessages = async (req, res) => {
   try {
-    const userId = isAdminRole(req.user.role) ? req.params.userId : req.user.id;
+    const userId = isAdminReq(req) ? req.params.userId : req.user.id;
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 50;
     const skip = (page - 1) * limit;
@@ -257,7 +255,7 @@ const getMessages = async (req, res) => {
     }
 
     // Reset unread count when user views their own messages
-    if (!isAdminRole(req.user.role) && req.user.id === userId) {
+    if (!isAdminReq(req) && req.user.id === userId) {
       conversation.unreadCount.user = 0;
       await conversation.save();
     }
@@ -297,7 +295,7 @@ const getMessages = async (req, res) => {
 // Mark conversation as read (conversation-level)
 const markMessagesAsRead = async (req, res) => {
   try {
-    const userId = isAdminRole(req.user.role) ? req.params.userId : req.user.id;
+    const userId = isAdminReq(req) ? req.params.userId : req.user.id;
     const { conversationId } = req.body;
 
     // Find conversation
@@ -318,7 +316,7 @@ const markMessagesAsRead = async (req, res) => {
 
     // Update conversation read status
     const now = new Date();
-    if (isAdminRole(req.user.role)) {
+    if (isAdminReq(req)) {
       conversation.lastReadByAdmin = now;
       conversation.unreadCount.admin = 0;
     } else {
@@ -353,7 +351,7 @@ const markMessagesAsRead = async (req, res) => {
 // @access  Admin
 const getAdminUnreadCount = async (req, res) => {
   try {
-    if (!isAdminRole(req.user.role)) {
+    if (!isAdminReq(req)) {
       return res.status(403).json({
         success: false,
         message: errorMessageService.getMessage('ADMIN_ACCESS_REQUIRED', errorMessageService.getLocaleFromRequest(req)),
@@ -416,7 +414,7 @@ const sendImageMessage = async (req, res) => {
   try {
     const { receiverId } = req.body;
     const senderId = req.user.id;
-    const senderType = isAdminRole(req.user.role) ? 'admin' : 'user';
+    const senderType = isAdminReq(req) ? 'admin' : 'user';
 
     // Validate image file
     if (!req.file) {
@@ -1255,7 +1253,7 @@ const sendAdminReplyToAnonymous = async (req, res) => {
 // @access  Admin
 const getUserConversations = async (req, res) => {
   try {
-    if (!isAdminRole(req.user.role)) {
+    if (!isAdminReq(req)) {
       return res.status(403).json({
         success: false,
         message: errorMessageService.getMessage('ADMIN_ACCESS_REQUIRED', errorMessageService.getLocaleFromRequest(req)),

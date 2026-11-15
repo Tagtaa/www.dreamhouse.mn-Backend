@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const { requirePermission: can } = require('../middleware/auth');
 const calculationController = require('../controllers/calculationController');
 const calculationTypeRoutes = require('./calculationTypeRoutes');
 const calculationMaterialRoutes = require('./calculationMaterialRoutes');
@@ -56,17 +57,17 @@ router.get('/types', auth, calculationController.getCalculationTypes);
 // @route   POST /api/calculations/types
 // @desc    Create calculation type (Admin only)
 // @access  Admin
-router.post('/types', auth, require('../middleware/auth').admin, uploadCalculationTypeImage, calculationController.createCalculationType);
+router.post('/types', auth, require('../middleware/auth').admin, can('calculations.create'), uploadCalculationTypeImage, calculationController.createCalculationType);
 
 // @route   PUT /api/calculations/types
 // @desc    Update calculation type (Admin only)
 // @access  Admin
-router.put('/types', auth, require('../middleware/auth').admin, uploadCalculationTypeImage, calculationController.updateCalculationType);
+router.put('/types', auth, require('../middleware/auth').admin, can('calculations.edit'), uploadCalculationTypeImage, calculationController.updateCalculationType);
 
 // @route   DELETE /api/calculations/types
 // @desc    Delete calculation type (Admin only)
 // @access  Admin
-router.delete('/types', auth, require('../middleware/auth').admin, calculationController.deleteCalculationType);
+router.delete('/types', auth, require('../middleware/auth').admin, can('calculations.delete'), calculationController.deleteCalculationType);
 
 // @route   GET /api/calculations/history
 // @desc    Get user's calculation history
@@ -140,13 +141,13 @@ router.get('/:type/thickness', auth, wallThicknessController.getWallThicknessOpt
 
 // Generic thickness by key endpoints (Admin only)
 // POST /api/calculations/:type/thickness
-router.post('/:type/thickness', auth, require('../middleware/auth').admin, uploadCalculationTypeImage, wallThicknessController.createWallThicknessByKey);
+router.post('/:type/thickness', auth, require('../middleware/auth').admin, can('calculations.create'), uploadCalculationTypeImage, wallThicknessController.createWallThicknessByKey);
 
 // PUT /api/calculations/:type/thickness
-router.put('/:type/thickness', auth, require('../middleware/auth').admin, uploadCalculationTypeImage, wallThicknessController.updateWallThicknessByKey);
+router.put('/:type/thickness', auth, require('../middleware/auth').admin, can('calculations.edit'), uploadCalculationTypeImage, wallThicknessController.updateWallThicknessByKey);
 
 // DELETE /api/calculations/:type/thickness
-router.delete('/:type/thickness', auth, require('../middleware/auth').admin, wallThicknessController.deleteWallThicknessByKey);
+router.delete('/:type/thickness', auth, require('../middleware/auth').admin, can('calculations.delete'), wallThicknessController.deleteWallThicknessByKey);
 
 // Generic shapes endpoint
 // GET /api/calculations/:type/choose-shapes
@@ -154,13 +155,13 @@ router.get('/:type/choose-shapes', auth, roofShapeController.getRoofShapeOptions
 
 // Generic shapes by key endpoints (Admin only)
 // POST /api/calculations/:type/choose-shapes
-router.post('/:type/choose-shapes', auth, require('../middleware/auth').admin, uploadCalculationTypeImage, roofShapeController.createRoofShapeByKey);
+router.post('/:type/choose-shapes', auth, require('../middleware/auth').admin, can('calculations.create'), uploadCalculationTypeImage, roofShapeController.createRoofShapeByKey);
 
 // PUT /api/calculations/:type/choose-shapes
-router.put('/:type/choose-shapes', auth, require('../middleware/auth').admin, uploadCalculationTypeImage, roofShapeController.updateRoofShapeByKey);
+router.put('/:type/choose-shapes', auth, require('../middleware/auth').admin, can('calculations.edit'), uploadCalculationTypeImage, roofShapeController.updateRoofShapeByKey);
 
 // DELETE /api/calculations/:type/choose-shapes
-router.delete('/:type/choose-shapes', auth, require('../middleware/auth').admin, roofShapeController.deleteRoofShapeByKey);
+router.delete('/:type/choose-shapes', auth, require('../middleware/auth').admin, can('calculations.delete'), roofShapeController.deleteRoofShapeByKey);
 
 // Mount calculation type and material routes
 router.use('/', calculationTypeRoutes);

@@ -38,9 +38,12 @@ const adminSchema = new mongoose.Schema({
     required: true,
     minlength: 4
   },
+  // Key of a role in the `roles` collection (built-in: superadmin, admin, operator; or a custom one).
+  // Checked against that collection when an admin is created or updated.
   role: {
     type: String,
-    enum: ADMIN_ROLES,
+    trim: true,
+    match: /^[a-z][a-z0-9_]{1,29}$/,
     default: 'admin'
   },
   isActive: {
@@ -77,7 +80,7 @@ adminSchema.index({ isActive: 1 });
 
 // Compatibility fields so existing controllers that read req.user keep working
 adminSchema.virtual('isAdmin').get(function () {
-  return ['superadmin', 'admin'].includes(this.role);
+  return true; // every dashboard account (what it may do is decided by its role permissions)
 });
 adminSchema.virtual('isBanned').get(() => false);
 adminSchema.virtual('accountType').get(() => 'admin');

@@ -2,6 +2,7 @@ const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const Admin = require('../models/Admin');
 const errorMessageService = require('../services/errorMessageService');
+const roleService = require('../services/roleService');
 const { isTokenBlacklisted, updateSessionActivity } = require('../config/redis');
 
 const ADMIN_ROLES = Admin.ADMIN_ROLES;
@@ -208,8 +209,8 @@ const admin = async (req, res, next) => {
       });
     }
 
-    // Must be a dashboard account (admins collection) with an admin role
-    if (!isAdminAccount(req) || !ADMIN_ROLES.includes(req.user.role)) {
+    // Must be a dashboard account (admins collection) with an existing role (built-in or custom)
+    if (!isAdminAccount(req) || !(await roleService.roleExists(req.user.role))) {
       const locale = errorMessageService.getLocaleFromRequest(req);
       return res.status(403).json({
         success: false,
@@ -298,7 +299,37 @@ const roleCheck = (allowedRoles) => {
   };
 };
 
+// Dashboard permission guard: passes when the admin role has ANY of the given
+// permissions ("<page>.<action>", see config/permissions.js). Use after auth.
+const requirePermission = (...permissions) => async (req, res, next) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({
+        success: false,
+        message: errorMessageService.getMessage('UNAUTHORIZED', errorMessageService.getLocaleFromRequest(req)),
+        code: 'AUTH_REQUIRED'
+      });
+    }
+    for (const permission of permissions) {
+      if (await roleService.hasPermission(req, permission)) return next();
+    }
+    return res.status(403).json({
+      success: false,
+      message: 'You do not have permission for this action',
+      code: 'PERMISSION_DENIED',
+      permission: permissions[0]
+    });
+  } catch (error) {
+    console.error('Permission check error:', error);
+    res.status(500).json({
+      success: false,
+      message: errorMessageService.getMessage('INTERNAL_SERVER_ERROR', errorMessageService.getLocaleFromRequest(req))
+    });
+  }
+};
+
 module.exports = {
+  requirePermission,
   auth,
   optionalAuth,
   premium,

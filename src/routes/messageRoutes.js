@@ -1,5 +1,8 @@
 const express = require('express');
 const router = express.Router();
+const { requirePermission: can } = require('../middleware/auth');
+// App users send freely; dashboard accounts need the chat permission to reply
+const staffNeeds = (permission) => (req, res, next) => (req.accountType === 'admin' ? can(permission)(req, res, next) : next());
 const { auth } = require('../middleware/auth');
 const { detectImageType } = require('../services/chatStorageService');
 const {
@@ -38,42 +41,42 @@ const uploadImage = (req, res, next) => upload.single('image')(req, res, (err) =
 });
 
 // Unread chats count for the dashboard sidebar badge (admin)
-router.get('/admin/unread-count', auth, getAdminUnreadCount);
+router.get('/admin/unread-count', auth, can('chats.view'), getAdminUnreadCount);
 
 // /dashboard/chat: one list of all chats, solved/unsolved status, delete (admin)
 const adminChat = require('../controllers/adminChatController');
-router.get('/admin/chats', auth, adminChat.getAllChats);
-router.put('/admin/chats/:id/status', auth, adminChat.setChatStatus);
-router.delete('/admin/chats/:id', auth, adminChat.deleteChat);
+router.get('/admin/chats', auth, can('chats.view'), adminChat.getAllChats);
+router.put('/admin/chats/:id/status', auth, can('chats.status'), adminChat.setChatStatus);
+router.delete('/admin/chats/:id', auth, can('chats.delete'), adminChat.deleteChat);
 
 // Send message - for both user and admin
-router.post('/send', auth, sendMessage);
+router.post('/send', auth, staffNeeds('chats.reply'), sendMessage);
 
 // Send image message (upload + message in single endpoint) - for both user and admin
-router.post('/send-image', auth, uploadImage, sendImageMessage);
+router.post('/send-image', auth, staffNeeds('chats.reply'), uploadImage, sendImageMessage);
 
 // Get user's own conversation
-router.get('/conversation', auth, getUserConversation);
+router.get('/conversation', auth, staffNeeds('chats.view'), getUserConversation);
 
 // Get user's own messages
-router.get('/user-messages', auth, getMessages);
+router.get('/user-messages', auth, staffNeeds('chats.view'), getMessages);
 
 // Get all conversations for admin
-router.get('/conversations', auth, getConversations);
+router.get('/conversations', auth, staffNeeds('chats.view'), getConversations);
 
 // @route   GET /api/messages/user-conversations
 // @desc    Get all user conversations with last message (admin only)
 // @access  Admin
-router.get('/user-conversations', auth, getUserConversations);
+router.get('/user-conversations', auth, staffNeeds('chats.view'), getUserConversations);
 
 // Get specific user's messages (for admin)
-router.get('/user-messages/:userId', auth, getMessages);
+router.get('/user-messages/:userId', auth, staffNeeds('chats.view'), getMessages);
 
 // Mark messages as read
-router.put('/read', auth, markMessagesAsRead);
+router.put('/read', auth, staffNeeds('chats.view'), markMessagesAsRead);
 
 // Mark specific user's messages as read (for admin)
-router.put('/read/:userId', auth, markMessagesAsRead);
+router.put('/read/:userId', auth, staffNeeds('chats.view'), markMessagesAsRead);
 
 // ==================== ANONYMOUS CHAT ROUTES ====================
 
@@ -102,26 +105,26 @@ router.post('/anonymous/messages', getAnonymousMessages);
 // @route   GET /api/messages/anonymous/sessions
 // @desc    Get all anonymous sessions
 // @access  Admin
-router.get('/anonymous/sessions', auth, getAnonymousSessions);
+router.get('/anonymous/sessions', auth, can('chats.view'), getAnonymousSessions);
 
 // @route   GET /api/messages/anonymous/conversations
 // @desc    Get conversations for specific session
 // @access  Admin
-router.get('/anonymous/conversations', auth, getAnonymousConversations);
+router.get('/anonymous/conversations', auth, can('chats.view'), getAnonymousConversations);
 
 // @route   POST /api/messages/anonymous/conversations/messages
 // @desc    Get messages for specific anonymous conversation
 // @access  Admin
-router.post('/anonymous/conversations/messages', auth, getAnonymousConversationMessages);
+router.post('/anonymous/conversations/messages', auth, can('chats.view'), getAnonymousConversationMessages);
 
 // @route   POST /api/messages/anonymous/conversations/reply
 // @desc    Send admin reply to anonymous conversation
 // @access  Admin
-router.post('/anonymous/conversations/reply', auth, sendAdminReplyToAnonymous);
+router.post('/anonymous/conversations/reply', auth, can('chats.reply'), sendAdminReplyToAnonymous);
 
 // @route   POST /api/messages/anonymous/conversations/reply-image
 // @desc    Send admin image reply to anonymous conversation
 // @access  Admin
-router.post('/anonymous/conversations/reply-image', auth, uploadImage, sendAdminImageReplyToAnonymous);
+router.post('/anonymous/conversations/reply-image', auth, can('chats.reply'), uploadImage, sendAdminImageReplyToAnonymous);
 
 module.exports = router;

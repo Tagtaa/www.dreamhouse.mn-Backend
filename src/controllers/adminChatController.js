@@ -64,7 +64,7 @@ const toChat = (conv) => {
 // @access  Admin
 const getAllChats = async (req, res) => {
   try {
-    if (!ADMIN_ROLES.includes(req.user.role)) return forbidden(req, res);
+    if (req.accountType !== 'admin') return forbidden(req, res);
     const limit = Math.min(parseInt(req.query.limit) || 200, 500);
 
     const conversations = await Conversation.find({ isActive: true, lastMessage: { $ne: null } })
@@ -104,7 +104,7 @@ const getAllChats = async (req, res) => {
 // @access  Admin
 const setChatStatus = async (req, res) => {
   try {
-    if (!ADMIN_ROLES.includes(req.user.role)) return forbidden(req, res);
+    if (req.accountType !== 'admin') return forbidden(req, res);
     const { status } = req.body;
     if (!['solved', 'unsolved'].includes(status)) {
       return res.status(400).json({ success: false, message: "status must be 'solved' or 'unsolved'" });
@@ -133,7 +133,7 @@ const setChatStatus = async (req, res) => {
 // @access  Admin
 const deleteChat = async (req, res) => {
   try {
-    if (!ADMIN_ROLES.includes(req.user.role)) return forbidden(req, res);
+    if (req.accountType !== 'admin') return forbidden(req, res);
 
     const conv = await findChat(req.params.id);
     if (!conv) return notFound(res);

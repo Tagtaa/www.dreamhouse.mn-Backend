@@ -583,6 +583,8 @@ const startServer = async () => {
 
     // Delete support-chat messages/images older than the "Chat deletion" setting (hourly)
     require('./src/services/chatRetentionService').startChatCleanupSchedule();
+    // Built-in dashboard roles (superadmin, admin, operator) for Roles & Permission
+    await require('./src/services/roleService').ensureSystemRoles();
 
     // Start server with Socket.IO
     server.listen(PORT, () => {

@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const { requirePermission: can } = require('../middleware/auth');
 const calculationTypeController = require('../controllers/calculationTypeController');
 const { auth, admin } = require('../middleware/auth');
 const multer = require('multer');
@@ -31,15 +32,15 @@ router.get('/:type/choose-types', auth, calculationTypeController.getCalculation
 
 // Create new calculation type for a specific calculation (Admin only)
 // POST /api/calculations/:type/choose-types
-router.post('/:type/choose-types', auth, admin, uploadImage, calculationTypeController.createCalculationType);
+router.post('/:type/choose-types', auth, admin, can('calculations.create'), uploadImage, calculationTypeController.createCalculationType);
 
 // Update calculation type by key (Admin only)
 // PUT /api/calculations/:type/choose-types
-router.put('/:type/choose-types', auth, admin, uploadImage, calculationTypeController.updateCalculationTypeByKey);
+router.put('/:type/choose-types', auth, admin, can('calculations.edit'), uploadImage, calculationTypeController.updateCalculationTypeByKey);
 
 // Delete calculation type by key (Admin only)
 // DELETE /api/calculations/:type/choose-types
-router.delete('/:type/choose-types', auth, admin, calculationTypeController.deleteCalculationTypeByKey);
+router.delete('/:type/choose-types', auth, admin, can('calculations.delete'), calculationTypeController.deleteCalculationTypeByKey);
 
 // Get calculation type by ID
 // GET /api/calculations/types/:id
@@ -49,10 +50,10 @@ router.get('/types/:id', auth, calculationTypeController.getCalculationTypeById)
 
 // Update calculation type (Admin only)
 // PUT /api/calculations/types/:id
-router.put('/types/:id', auth, admin, calculationTypeController.updateCalculationType);
+router.put('/types/:id', auth, admin, can('calculations.edit'), calculationTypeController.updateCalculationType);
 
 // Delete calculation type (Admin only)
 // DELETE /api/calculations/types/:id
-router.delete('/types/:id', auth, admin, calculationTypeController.deleteCalculationType);
+router.delete('/types/:id', auth, admin, can('calculations.delete'), calculationTypeController.deleteCalculationType);
 
 module.exports = router;

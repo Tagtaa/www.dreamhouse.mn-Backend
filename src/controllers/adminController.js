@@ -4,6 +4,13 @@ const Material = require('../models/Material');
 const Idea = require('../models/Idea');
 const Calculation = require('../models/Calculation');
 const errorMessageService = require('../services/errorMessageService');
+const roleService = require('../services/roleService');
+
+const permissionDenied = (res) => res.status(403).json({
+  success: false,
+  message: 'You do not have permission for this action',
+  code: 'PERMISSION_DENIED'
+});
 
 // Roles an app user (users collection) may hold
 const USER_ROLES = ['user', 'moderator'];
@@ -200,7 +207,7 @@ const getAdmins = async (req, res) => {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 20;
     const skip = (page - 1) * limit;
-    const roleParam = req.query.role; // admin, superadmin, operator, all
+    const roleParam = req.query.role; // a role key (built-in or custom) or all
     const search = req.query.search;
 
     // Build filter
@@ -208,8 +215,8 @@ const getAdmins = async (req, res) => {
 
     // Role filter - default to all admin roles if not specified or 'all'
     if (!roleParam || roleParam === 'all') {
-      filter.role = { $in: ['admin', 'superadmin', 'operator'] };
-    } else if (['admin', 'superadmin', 'operator'].includes(roleParam)) {
+      // every dashboard account
+    } else if (/^[a-z][a-z0-9_]{1,29}$/.test(roleParam)) {
       filter.role = roleParam;
     } else {
       return res.status(400).json({
@@ -233,11 +240,6 @@ const getAdmins = async (req, res) => {
 
     // Get counts by role
     const roleStats = await Admin.aggregate([
-      {
-        $match: {
-          role: { $in: ['admin', 'superadmin', 'operator'] }
-        }
-      },
       {
         $group: {
           _id: '$role',
@@ -334,32 +336,30 @@ const updateAdmin = async (req, res) => {
       });
     }
 
-    // Check if user is actually an admin
-    if (!['admin', 'superadmin', 'operator'].includes(admin.role)) {
-      return res.status(400).json({
-        success: false,
-        message: errorMessageService.getMessage('USER_IS_NOT_ADMIN', errorMessageService.getLocaleFromRequest(req))
-      });
-    }
-
-    // Validate role if provided
-    if (role && !['admin', 'superadmin', 'operator'].includes(role)) {
+    // Validate role if provided (built-in or custom role from Roles & Permission)
+    if (role && !(await roleService.roleExists(role))) {
       return res.status(400).json({
         success: false,
         message: errorMessageService.getMessage('INVALID_ROLE_ADMIN', errorMessageService.getLocaleFromRequest(req))
       });
     }
 
-    // Only a superadmin may change roles, activation or another admin's password
-    const isSuperadmin = req.user.role === 'superadmin';
+    // Own information and password are always editable; everything else needs a permission
     const isSelf = admin._id.toString() === req.user._id.toString();
-    if (!isSuperadmin && (!isSelf || role !== undefined || isActive !== undefined)) {
-      return res.status(403).json({
-        success: false,
-        message: errorMessageService.getMessage('ADMIN_REQUIRED', errorMessageService.getLocaleFromRequest(req)),
-        code: 'SUPERADMIN_REQUIRED'
-      });
+    const changesInfo = [username, email, phone].some((v) => v !== undefined);
+    const changesPassword = password !== undefined && password !== null && password !== '';
+    const changesRole = role !== undefined || isActive !== undefined;
+    if (!isSelf) {
+      if (changesInfo && !(await roleService.hasPermission(req, 'admins.edit'))) return permissionDenied(res);
+      if (changesPassword && !(await roleService.hasPermission(req, 'admins.password'))) return permissionDenied(res);
     }
+    if (changesRole && !(await roleService.hasPermission(req, isActive === false && role === undefined ? 'admins.deactivate' : 'admins.role'))) {
+      return permissionDenied(res);
+    }
+    // Only a superadmin can make someone superadmin or change a superadmin
+    const touchesSuperadmin = (role !== undefined && role !== admin.role && (role === 'superadmin' || admin.role === 'superadmin')) ||
+      (isActive === false && admin.role === 'superadmin');
+    if (touchesSuperadmin && req.user.role !== 'superadmin') return permissionDenied(res);
 
     if (password !== undefined && password !== null && password !== '' && String(password).length < 4) {
       return res.status(400).json({
@@ -461,13 +461,7 @@ const getAdminById = async (req, res) => {
 // @access  Admin
 const deleteAdmin = async (req, res) => {
   try {
-    if (req.user.role !== 'superadmin') {
-      return res.status(403).json({
-        success: false,
-        message: errorMessageService.getMessage('ADMIN_REQUIRED', errorMessageService.getLocaleFromRequest(req)),
-        code: 'SUPERADMIN_REQUIRED'
-      });
-    }
+    if (!(await roleService.hasPermission(req, 'admins.deactivate'))) return permissionDenied(res);
 
     const admin = await Admin.findById(req.params.id);
 
@@ -477,14 +471,7 @@ const deleteAdmin = async (req, res) => {
         message: errorMessageService.getMessage('USER_NOT_FOUND', errorMessageService.getLocaleFromRequest(req))
       });
     }
-
-    // Check if user is actually an admin
-    if (!['admin', 'superadmin', 'operator'].includes(admin.role)) {
-      return res.status(400).json({
-        success: false,
-        message: errorMessageService.getMessage('USER_IS_NOT_ADMIN', errorMessageService.getLocaleFromRequest(req))
-      });
-    }
+    if (admin.role === 'superadmin' && req.user.role !== 'superadmin') return permissionDenied(res);
 
     // Prevent deleting yourself
     if (admin._id.toString() === req.user._id.toString()) {
@@ -558,11 +545,12 @@ const updateUserStatus = async (req, res) => {
 // @access  Operator only
 const banUser = async (req, res) => {
   try {
-    // Check if requester is operator only (not admin or superadmin)
-    if (req.user.role !== 'operator') {
+    // Roles & Permission: users.ban (by default only the Operator role has it)
+    if (!(await roleService.hasPermission(req, 'users.ban'))) {
       return res.status(403).json({
         success: false,
-        message: errorMessageService.getMessage('ONLY_OPERATORS_CAN_BAN', errorMessageService.getLocaleFromRequest(req))
+        message: errorMessageService.getMessage('ONLY_OPERATORS_CAN_BAN', errorMessageService.getLocaleFromRequest(req)),
+        code: 'PERMISSION_DENIED'
       });
     }
 
@@ -669,11 +657,12 @@ const updateUserRole = async (req, res) => {
 // @access  Admin, Superadmin only
 const deleteUser = async (req, res) => {
   try {
-    // Check if requester is admin or superadmin (not operator)
-    if (!['admin', 'superadmin'].includes(req.user.role)) {
+    // Roles & Permission: users.delete (by default Admin and Superadmin)
+    if (!(await roleService.hasPermission(req, 'users.delete'))) {
       return res.status(403).json({
         success: false,
-        message: errorMessageService.getMessage('ONLY_ADMIN_CAN_DELETE', errorMessageService.getLocaleFromRequest(req))
+        message: errorMessageService.getMessage('ONLY_ADMIN_CAN_DELETE', errorMessageService.getLocaleFromRequest(req)),
+        code: 'PERMISSION_DENIED'
       });
     }
 

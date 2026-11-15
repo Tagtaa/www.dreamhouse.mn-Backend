@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const { requirePermission: can } = require('../middleware/auth');
 const wallThicknessController = require('../controllers/wallThicknessController');
 const { auth, admin } = require('../middleware/auth');
 
@@ -13,14 +14,14 @@ router.get('/wall/thickness/:id', auth, wallThicknessController.getWallThickness
 
 // Create new wall thickness option (Admin only)
 // POST /api/calculations/wall/thickness
-router.post('/wall/thickness', auth, admin, wallThicknessController.createWallThickness);
+router.post('/wall/thickness', auth, admin, can('calculations.create'), wallThicknessController.createWallThickness);
 
 // Update wall thickness option (Admin only)
 // PUT /api/calculations/wall/thickness/:id
-router.put('/wall/thickness/:id', auth, admin, wallThicknessController.updateWallThickness);
+router.put('/wall/thickness/:id', auth, admin, can('calculations.edit'), wallThicknessController.updateWallThickness);
 
 // Delete wall thickness option (Admin only)
 // DELETE /api/calculations/wall/thickness/:id
-router.delete('/wall/thickness/:id', auth, admin, wallThicknessController.deleteWallThickness);
+router.delete('/wall/thickness/:id', auth, admin, can('calculations.delete'), wallThicknessController.deleteWallThickness);
 
 module.exports = router;

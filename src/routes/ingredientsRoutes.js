@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const { requirePermission: can } = require('../middleware/auth');
 const ingredientsController = require('../controllers/ingredientsController');
 const { auth, admin } = require('../middleware/auth');
 const { 
@@ -96,7 +97,7 @@ router.get('/categories/:categoryId/ingredients',
 // POST /api/materials/categories/:categoryId/ingredients
 router.post('/categories/:categoryId/ingredients',
   auth,
-  admin,
+  admin, can('material_categories.edit'),
   validateObjectId('categoryId'),
   validateIngredientData(),
   handleValidationErrors,
@@ -107,7 +108,7 @@ router.post('/categories/:categoryId/ingredients',
 // PUT /api/materials/categories/:categoryId/ingredients
 router.put('/categories/:categoryId/ingredients',
   auth,
-  admin,
+  admin, can('material_categories.edit'),
   validateObjectId('categoryId'),
   validateIngredientUpdate(),
   handleValidationErrors,
@@ -118,7 +119,7 @@ router.put('/categories/:categoryId/ingredients',
 // DELETE /api/materials/categories/:categoryId/ingredients
 router.delete('/categories/:categoryId/ingredients',
   auth,
-  admin,
+  admin, can('material_categories.edit'),
   validateObjectId('categoryId'),
   validateIngredientDeleteByName(),
   handleValidationErrors,
@@ -129,7 +130,7 @@ router.delete('/categories/:categoryId/ingredients',
 // PUT /api/materials/categories/:categoryId/ingredients/:ingredientId
 router.put('/categories/:categoryId/ingredients/:ingredientId',
   auth,
-  admin,
+  admin, can('material_categories.edit'),
   validateObjectId('categoryId'),
   validateObjectId('ingredientId'),
   validateIngredientUpdate(),
@@ -141,7 +142,7 @@ router.put('/categories/:categoryId/ingredients/:ingredientId',
 // DELETE /api/materials/categories/:categoryId/ingredients/:ingredientId
 router.delete('/categories/:categoryId/ingredients/:ingredientId',
   auth,
-  admin,
+  admin, can('material_categories.edit'),
   validateObjectId('categoryId'),
   validateObjectId('ingredientId'),
   handleValidationErrors,

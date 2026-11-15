@@ -4,317 +4,260 @@ const adminController = require('../controllers/adminController');
 const materialController = require('../controllers/materialController');
 const subscriptionController = require('../controllers/subscriptionController');
 const ideaController = require('../controllers/ideaController');
-const withdrawController = require('../controllers/withdrawController');
-const { auth, admin, roleCheck } = require('../middleware/auth');
+const roleController = require('../controllers/roleController');
+const { auth, admin, requirePermission: can } = require('../middleware/auth');
+const roleService = require('../services/roleService');
 const {
   validateObjectId,
   validatePagination,
   handleValidationErrors
 } = require('../middleware/validation');
 
-// Apply auth and admin middleware to all routes
+// Every route needs a dashboard account; each route then needs a permission from
+// Roles & Permission (config/permissions.js), e.g. can('users.ban').
 router.use(auth, admin);
 
+// Own admin record is always readable (Profile page); other admins need admins.view
+const selfOr = (permission) => async (req, res, next) => {
+  if (String(req.params.id) === String(req.user._id)) return next();
+  return can(permission)(req, res, next);
+};
+
+// PUT /manual-users/:id edits info, status or membership: check what is being changed
+const userUpdatePermission = async (req, res, next) => {
+  const body = req.body || {};
+  const needed = [];
+  if (['username', 'phone', 'email', 'role'].some((k) => body[k] !== undefined)) needed.push('users.edit');
+  if (body.password !== undefined && body.password !== '') needed.push('users.password');
+  if (body.isActive !== undefined) needed.push('users.status');
+  if (body.premiumDays !== undefined) needed.push('users.membership');
+  if (!needed.length) needed.push('users.edit');
+  for (const permission of needed) {
+    if (!(await roleService.hasPermission(req, permission))) {
+      return res.status(403).json({ success: false, message: 'You do not have permission for this action', code: 'PERMISSION_DENIED', permission });
+    }
+  }
+  next();
+};
+
 // @route   POST /api/admin/change-password
-// @desc    Change admin password
-// @access  Admin
+// @desc    Change own password
+// @access  Admin (any)
 router.post('/change-password', adminController.changeAdminPassword);
 
-// Withdraw Management
+// Roles & Permission
+// @route   GET    /api/admin/roles        — any admin (catalog + roles; also used by role pickers)
+// @route   POST   /api/admin/roles        — roles.manage
+// @route   PUT    /api/admin/roles/:key   — roles.manage
+// @route   DELETE /api/admin/roles/:key   — roles.manage
+router.get('/roles', roleController.listRoles);
+router.post('/roles', can('roles.manage'), roleController.createRole);
+router.put('/roles/:key', can('roles.manage'), roleController.updateRole);
+router.delete('/roles/:key', can('roles.manage'), roleController.deleteRole);
+
+// Withdraw / Purchase / Deposit Management (permissions inside each router)
 router.use('/withdrawals', require('./withdrawRoutes'));
-
-// Purchase Management
 router.use('/purchases', require('./purchaseRoutes'));
-
-// Deposit Management
 router.use('/deposits', require('./depositRoutes'));
 
 // Dashboard Analytics
 // @route   GET /api/admin/dashboard
-// @desc    Get dashboard analytics
-// @access  Admin
-router.get('/dashboard', adminController.getDashboardAnalytics);
+router.get('/dashboard', can('dashboard.view'), adminController.getDashboardAnalytics);
 
 // App Settings (Settings → Preferences)
-// @route   GET /api/admin/settings   — Admin
-// @route   PUT /api/admin/settings   — Superadmin (SMS parser phone for mobile app + website)
 const settingsController = require('../controllers/settingsController');
-router.get('/settings', settingsController.getSettings);
-router.put('/settings', roleCheck(['superadmin']), settingsController.updateSettings);
+router.get('/settings', can('settings.view'), settingsController.getSettings);
+router.put('/settings', can('settings.edit'), settingsController.updateSettings);
 
 // User Management
-// @route   GET /api/admin/users
-// @desc    Get users list
-// @access  Admin
+// @route   GET /api/admin/users  (also used to look users up when creating transactions)
 router.get('/users',
+  can('users.view', 'deposits.create', 'withdrawals.create', 'purchases.create'),
   validatePagination(),
   handleValidationErrors,
   adminController.getUsers
 );
 
 // @route   GET /api/admin/admins
-// @desc    Get admins list (admin, superadmin, operator)
-// @access  Admin
 router.get('/admins',
+  can('admins.view'),
   validatePagination(),
   handleValidationErrors,
   adminController.getAdmins
 );
 
-// @route   GET /api/admin/admins/:id
-// @desc    Get one admin (admin edit page)
-// @access  Admin
+// @route   GET /api/admin/admins/:id   (own record always)
 router.get('/admins/:id',
   validateObjectId(),
   handleValidationErrors,
+  selfOr('admins.view'),
   adminController.getAdminById
 );
 
-// @route   PUT /api/admin/admins/:id
-// @desc    Update admin
-// @access  Admin
+// @route   PUT /api/admin/admins/:id   (field-level permissions checked in the controller)
 router.put('/admins/:id',
   validateObjectId(),
   handleValidationErrors,
   adminController.updateAdmin
 );
 
-// @route   DELETE /api/admin/admins/:id
-// @desc    Delete admin (soft delete)
-// @access  Admin
+// @route   DELETE /api/admin/admins/:id   (soft delete = deactivate)
 router.delete('/admins/:id',
   validateObjectId(),
   handleValidationErrors,
+  can('admins.deactivate'),
   adminController.deleteAdmin
 );
 
 // @route   GET /api/admin/users/:id
-// @desc    Get user details
-// @access  Admin
 router.get('/users/:id',
   validateObjectId(),
   handleValidationErrors,
+  can('users.view'),
   adminController.getUserById
 );
 
 // @route   PUT /api/admin/users/:id/status
-// @desc    Update user status (activate/deactivate)
-// @access  Admin
 router.put('/users/:id/status',
   validateObjectId(),
   handleValidationErrors,
+  can('users.status'),
   adminController.updateUserStatus
 );
 
 // @route   PUT /api/admin/users/:id/ban
-// @desc    Ban/Unban user
-// @access  Operator only
 router.put('/users/:id/ban',
   validateObjectId(),
   handleValidationErrors,
-  roleCheck(['operator']),
+  can('users.ban'),
   adminController.banUser
 );
 
 // @route   PUT /api/admin/users/:id/role
-// @desc    Update user role
-// @access  Admin
 router.put('/users/:id/role',
   validateObjectId(),
   handleValidationErrors,
+  can('users.edit'),
   adminController.updateUserRole
 );
 
-// @route   DELETE /api/admin/users/:id
-// @desc    Delete user (hard delete - permanent)
-// @access  Admin, Superadmin only
+// @route   DELETE /api/admin/users/:id   (hard delete - permanent)
 router.delete('/users/:id',
   validateObjectId(),
   handleValidationErrors,
-  roleCheck(['admin', 'superadmin']),
+  can('users.delete'),
   adminController.deleteUser
 );
 
 // @route   PUT /api/admin/users/:id/password
-// @desc    Change user password (admin only)
-// @access  Admin
 router.put('/users/:id/password',
   validateObjectId(),
   handleValidationErrors,
+  can('users.password'),
   adminController.changeUserPassword
 );
 
 // Subscription Management
-// @route   GET /api/admin/subscriptions
-// @desc    Get subscriptions list
-// @access  Admin
 router.get('/subscriptions',
+  can('subscriptions.view', 'users.membership'),
   validatePagination(),
   handleValidationErrors,
   subscriptionController.getSubscriptions
 );
-
-// @route   GET /api/admin/subscriptions/:id
-// @desc    Get subscription details
-// @access  Admin
 router.get('/subscriptions/:id',
   validateObjectId(),
   handleValidationErrors,
+  can('subscriptions.view'),
   subscriptionController.getSubscriptionById
 );
-
-// @route   POST /api/admin/subscriptions
-// @desc    Create new subscription
-// @access  Admin
-router.post('/subscriptions', subscriptionController.createSubscription);
-
-// @route   PUT /api/admin/subscriptions/:id
-// @desc    Update subscription
-// @access  Admin
+router.post('/subscriptions', can('subscriptions.create'), subscriptionController.createSubscription);
 router.put('/subscriptions/:id',
   validateObjectId(),
   handleValidationErrors,
+  can('subscriptions.edit'),
   subscriptionController.updateSubscription
 );
-
-// @route   DELETE /api/admin/subscriptions/:id
-// @desc    Delete subscription
-// @access  Admin
 router.delete('/subscriptions/:id',
   validateObjectId(),
   handleValidationErrors,
+  can('subscriptions.delete'),
   subscriptionController.deleteSubscription
 );
-
-// @route   PUT /api/admin/subscriptions/:id/toggle
-// @desc    Toggle subscription status
-// @access  Admin
 router.put('/subscriptions/:id/toggle',
   validateObjectId(),
   handleValidationErrors,
+  can('subscriptions.toggle'),
   subscriptionController.toggleSubscriptionStatus
 );
 
 // Material Management
-// @route   GET /api/admin/materials
-// @desc    Get materials list for admin
-// @access  Admin
 router.get('/materials',
+  can('materials.view', 'material_categories.view', 'calculations.view'),
   validatePagination(),
   handleValidationErrors,
   materialController.getAllMaterialsAdmin
 );
-
-// @route   GET /api/admin/materials/:id/ingredients
-// @desc    Get material ingredients for admin editing
-// @access  Admin
 router.get('/materials/:id/ingredients',
+  can('materials.view', 'material_categories.view'),
   adminController.getMaterialIngredients
 );
-
-// @route   PUT /api/admin/materials/:id/ingredients
-// @desc    Update material ingredients
-// @access  Admin
 router.put('/materials/:id/ingredients',
+  can('materials.edit', 'material_categories.edit'),
   adminController.updateMaterialIngredients
 );
-
-// @route   POST /api/admin/materials/:id/ingredients/preview
-// @desc    Preview ingredients calculation
-// @access  Admin
 router.post('/materials/:id/ingredients/preview',
+  can('materials.view', 'material_categories.view'),
   adminController.previewIngredientsCalculation
 );
 
-// Idea Management
-// @route   GET /api/admin/ideas
-// @desc    Get ideas list for admin
-// @access  Admin
+// Idea (article) Management
 router.get('/ideas',
+  can('articles.view', 'purchases.create'),
   validatePagination(),
   handleValidationErrors,
   ideaController.getAllIdeasAdmin
 );
-
-// @route   GET /api/admin/purchased-ideas
-// @desc    Get all purchased ideas by all users
-// @access  Admin
 router.get('/purchased-ideas',
+  can('purchased_ideas.view'),
   validatePagination(),
   handleValidationErrors,
   ideaController.getAllPurchasedIdeasAdmin
 );
 
 // Analytics & Reports
-// @route   GET /api/admin/analytics/users
-// @desc    Get user analytics
-// @access  Admin
-router.get('/analytics/users', adminController.getUserAnalytics);
-
-// @route   GET /api/admin/analytics/calculations
-// @desc    Get calculation analytics
-// @access  Admin
-router.get('/analytics/calculations', adminController.getCalculationAnalytics);
-
-// @route   GET /api/admin/analytics/revenue
-// @desc    Get revenue analytics
-// @access  Admin
-router.get('/analytics/revenue', adminController.getRevenueAnalytics);
+router.get('/analytics/users', can('dashboard.view', 'reports.view'), adminController.getUserAnalytics);
+router.get('/analytics/calculations', can('dashboard.view', 'reports.view'), adminController.getCalculationAnalytics);
+router.get('/analytics/revenue', can('dashboard.view', 'reports.view'), adminController.getRevenueAnalytics);
 
 // System Management
-// @route   GET /api/admin/system/stats
-// @desc    Get system statistics
-// @access  Admin
-router.get('/system/stats', adminController.getSystemStats);
+router.get('/system/stats', can('dashboard.view'), adminController.getSystemStats);
+router.post('/system/cleanup', can('settings.edit'), adminController.cleanupSystem);
 
-// @route   POST /api/admin/system/cleanup
-// @desc    Cleanup expired data
-// @access  Admin
-router.post('/system/cleanup', adminController.cleanupSystem);
-
-// ====================
 // Manual User Management CRUD (No OTP Required)
-// ====================
-
-// @route   POST /api/admin/manual-users
-// @desc    Create user manually (no OTP verification)
-// @access  Admin
-router.post('/manual-users', adminController.createManualUser);
-
-// @route   GET /api/admin/manual-users
-// @desc    Get all users with filters
-// @access  Admin
+router.post('/manual-users', can('users.create'), adminController.createManualUser);
 router.get('/manual-users',
+  can('users.view'),
   validatePagination(),
   handleValidationErrors,
   adminController.getManualUsers
 );
-
-// @route   GET /api/admin/manual-users/:id
-// @desc    Get single user by ID
-// @access  Admin
 router.get('/manual-users/:id',
   validateObjectId(),
   handleValidationErrors,
+  can('users.view'),
   adminController.getManualUserById
 );
-
-// @route   PUT /api/admin/manual-users/:id
-// @desc    Update user manually
-// @access  Admin
 router.put('/manual-users/:id',
   validateObjectId(),
   handleValidationErrors,
+  userUpdatePermission,
   adminController.updateManualUser
 );
-
-// @route   DELETE /api/admin/manual-users/:id
-// @desc    Delete user manually (hard delete)
-// @access  Admin
 router.delete('/manual-users/:id',
   validateObjectId(),
   handleValidationErrors,
+  can('users.delete'),
   adminController.deleteManualUser
 );
 
-module.exports = router; 
+module.exports = router;

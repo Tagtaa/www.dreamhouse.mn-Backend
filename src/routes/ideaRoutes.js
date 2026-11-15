@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const { requirePermission: can } = require('../middleware/auth');
 const ideaController = require('../controllers/ideaController');
 const { auth, optionalAuth, premium, admin } = require('../middleware/auth');
 const { 
@@ -24,17 +25,17 @@ router.get('/',
 // @desc    Get idea categories
 // @access  Public
 router.get('/categories', ideaController.getCategories);
-router.post('/categories', auth, admin, ideaController.createCategory);
-router.put('/categories/:id', auth, admin, ideaController.updateCategory);
-router.delete('/categories/:id', auth, admin, ideaController.deleteCategory);
+router.post('/categories', auth, admin, can('article_categories.create'), ideaController.createCategory);
+router.put('/categories/:id', auth, admin, can('article_categories.edit'), ideaController.updateCategory);
+router.delete('/categories/:id', auth, admin, can('article_categories.delete'), ideaController.deleteCategory);
 
 // @route   GET /api/ideas/heating-types
 // @desc    Get heating types
 // @access  Public
 router.get('/heating-types', ideaController.getHeatingTypes);
-router.post('/heating-types', auth, admin, ideaController.createHeatingType);
-router.put('/heating-types/:id', auth, admin, ideaController.updateHeatingType);
-router.delete('/heating-types/:id', auth, admin, ideaController.deleteHeatingType);
+router.post('/heating-types', auth, admin, can('articles.edit'), ideaController.createHeatingType);
+router.put('/heating-types/:id', auth, admin, can('articles.edit'), ideaController.updateHeatingType);
+router.delete('/heating-types/:id', auth, admin, can('articles.edit'), ideaController.deleteHeatingType);
 
 // @route   GET /api/ideas/size-ranges
 // @desc    Get size ranges for filtering
@@ -106,7 +107,7 @@ router.post('/:id/purchase',
 // @access  Admin
 router.post('/',
   auth,
-  admin,
+  admin, can('articles.create'),
   ideaController.createIdea
 );
 
@@ -115,7 +116,7 @@ router.post('/',
 // @access  Admin
 router.put('/:id',
   auth,
-  admin,
+  admin, can('articles.edit'),
   validateObjectId(),
   handleValidationErrors,
   ideaController.updateIdea
@@ -126,7 +127,7 @@ router.put('/:id',
 // @access  Admin
 router.delete('/:id',
   auth,
-  admin,
+  admin, can('articles.delete'),
   validateObjectId(),
   handleValidationErrors,
   ideaController.deleteIdea
@@ -137,7 +138,7 @@ router.delete('/:id',
 // @access  Admin
 router.patch('/:id/featured',
   auth,
-  admin,
+  admin, can('articles.publish'),
   validateObjectId(),
   handleValidationErrors,
   ideaController.toggleFeatured

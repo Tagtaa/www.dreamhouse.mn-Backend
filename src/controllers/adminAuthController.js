@@ -1,6 +1,13 @@
 const jwt = require('jsonwebtoken');
 const Admin = require('../models/Admin');
 const errorMessageService = require('../services/errorMessageService');
+const roleService = require('../services/roleService');
+
+// Admin profile + the permissions of their role (the dashboard shows/hides pages and actions with it)
+const withPermissions = async (admin) => ({
+  ...admin.toSafeJSON(),
+  permissions: await roleService.getPermissions(admin.role)
+});
 const { logout: sharedLogout } = require('./authController');
 
 const locale = (req) => errorMessageService.getLocaleFromRequest(req);
@@ -52,7 +59,7 @@ const login = async (req, res) => {
       success: true,
       message: msg(req, 'LOGIN_SUCCESSFUL'),
       data: {
-        user: admin.toSafeJSON(),
+        user: await withPermissions(admin),
         token: generateAdminToken(admin),
         refreshToken: generateAdminRefreshToken(admin)
       }
@@ -106,7 +113,7 @@ const refreshToken = async (req, res) => {
 // @route   GET /api/admin-auth/me
 // @access  Admin
 const getMe = async (req, res) => {
-  res.status(200).json({ success: true, data: { user: req.user.toSafeJSON() } });
+  res.status(200).json({ success: true, data: { user: await withPermissions(req.user) } });
 };
 
 // @desc    Update own username / email
@@ -153,8 +160,12 @@ const createAdmin = async (req, res) => {
   try {
     const { phone, username, password, email, role = 'admin' } = req.body;
 
-    if (!Admin.ADMIN_ROLES.includes(role)) {
+    if (!(await roleService.roleExists(role))) {
       return res.status(400).json({ success: false, message: msg(req, 'INVALID_ROLE_SUPERADMIN') });
+    }
+    // Only a superadmin can create another superadmin
+    if (role === 'superadmin' && req.user.role !== 'superadmin') {
+      return res.status(403).json({ success: false, message: 'You do not have permission for this action', code: 'PERMISSION_DENIED' });
     }
 
     if (!password || String(password).length < MIN_PASSWORD_LENGTH) {
