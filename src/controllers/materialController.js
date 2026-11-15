@@ -3,6 +3,7 @@ const MaterialCategory = require('../models/MaterialCategory');
 const ParentCategory = require('../models/ParentCategory');
 const Ingredient = require('../models/Ingredient');
 const errorMessageService = require('../services/errorMessageService');
+const { normalizeContact } = require('../services/materialContactService');
 
 // @desc    Get materials list
 // @route   GET /api/materials
@@ -99,7 +100,7 @@ const getMaterials = async (req, res) => {
     console.log(`🔍 Inactive Materials: ${inactiveCount}`);
     console.log(`🔍 Filter applied:`, JSON.stringify(filter, null, 2));
 
-    materials = await Material.find(filter)
+    const findPage = (pageFilter, pageSkip, pageLimit) => Material.find(pageFilter)
       .populate({
         path: 'category',
         select: '_id name images parentCategory',
@@ -110,10 +111,24 @@ const getMaterials = async (req, res) => {
         }
       })
       .populate('ingredients')
-      .select('_id name category price specs rating width length height unit description images ingredients thicknessOptions likeCount likedBy isPremium isActive tags popularity viewCount createdAt updatedAt supplier')
-      .limit(limit)
-      .skip(skip)
-      .sort('-createdAt');
+      .select('_id name category price specs rating width length height unit description images ingredients thicknessOptions likeCount likedBy isPremium isActive tags popularity viewCount createdAt updatedAt supplier contact')
+      .limit(pageLimit)
+      .skip(pageSkip)
+      .sort({ createdAt: -1, _id: -1 }); // _id breaks ties so pages never repeat or skip items
+
+    // ?likedFirst=true (website /app/materials): the signed-in user's liked materials come first,
+    // across all pages; each group stays newest first
+    if (req.query.likedFirst === 'true' && req.user && req.user._id) {
+      const likedFilter = { ...filter, likedBy: req.user._id };
+      const otherFilter = { ...filter, likedBy: { $ne: req.user._id } };
+      const likedTotal = await Material.countDocuments(likedFilter);
+      const liked = skip < likedTotal ? await findPage(likedFilter, skip, limit) : [];
+      const remaining = limit - liked.length;
+      const others = remaining > 0 ? await findPage(otherFilter, Math.max(0, skip - likedTotal), remaining) : [];
+      materials = [...liked, ...others];
+    } else {
+      materials = await findPage(filter, skip, limit);
+    }
 
     total = await Material.countDocuments(filter);
     console.log(`🔍 Materials found with filter: ${materials.length}`);
@@ -1024,7 +1039,8 @@ const createMaterial = async (req, res) => {
       thicknessOptions,
       isPremium,
       tags,
-      supplier
+      supplier,
+      contact
     } = req.body;
 
     // Check if material name already exists
@@ -1134,6 +1150,7 @@ const createMaterial = async (req, res) => {
       isPremium: isPremium || false,
       tags: tags || [],
       supplier,
+      contact: normalizeContact(contact),
       popularity: 0,
       viewCount: 0,
       isActive: true
@@ -1160,6 +1177,7 @@ const createMaterial = async (req, res) => {
       }
     });
   } catch (error) {
+    if (error.status === 400) return res.status(400).json({ success: false, message: error.message });
     console.error('Create material error:', error);
     console.error('Error details:', error.message);
     res.status(500).json({
@@ -1185,6 +1203,7 @@ const updateMaterial = async (req, res) => {
     }
 
     const updates = req.body;
+    if (updates.contact !== undefined) updates.contact = normalizeContact(updates.contact);
     const categoryChanged = updates.category && updates.category.toString() !== material.category.toString();
     
     // If category changed, get new category ingredients
@@ -1275,6 +1294,7 @@ const updateMaterial = async (req, res) => {
       }
     });
   } catch (error) {
+    if (error.status === 400) return res.status(400).json({ success: false, message: error.message });
     console.error('Update material error:', error);
     res.status(500).json({
       success: false,

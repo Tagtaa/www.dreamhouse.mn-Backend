@@ -1,9 +1,13 @@
 const express = require('express');
 const router = express.Router();
 const { requirePermission: can } = require('../middleware/auth');
+const { hideContactUnlessMember } = require('../services/materialContactService');
 const materialController = require('../controllers/materialController');
 const ingredientNameController = require('../controllers/ingredientNameController');
 const { auth, optionalAuth, premium, admin } = require('../middleware/auth');
+
+// Material contact details (phone, address, map) only for members and dashboard accounts
+router.use(hideContactUnlessMember);
 const { 
   validateObjectId,
   validatePagination,

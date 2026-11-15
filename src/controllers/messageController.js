@@ -1268,7 +1268,7 @@ const getUserConversations = async (req, res) => {
     // Get all active conversations with user info and last message
     const conversations = await Conversation.find({ isActive: true })
       // App users have username + phone (no firstName/lastName/phoneNumber fields)
-      .populate('userId', 'username phone email profileImage createdAt lastLogin')
+      .populate('userId', 'username phone email profileImage createdAt lastLogin membership')
       .populate('lastMessage')
       .sort({ lastMessageAt: -1 }) // Most recent first
       .skip(skip)

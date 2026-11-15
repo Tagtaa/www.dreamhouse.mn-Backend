@@ -47,7 +47,9 @@ const toChat = (conv) => {
       phone: user.phone,
       phoneNumber: user.phone,
       email: user.email,
-      profileImage: user.profileImage
+      profileImage: user.profileImage,
+      // Dashboard chat shows a gold star for users with an active membership
+      membership: user.membership ? { type: user.membership.type, expiresAt: user.membership.expiresAt } : null
     } : null,
     anonymousUserId: conv.anonymousUserId || null,
     lastMessage: lastMessageSummary(conv.lastMessage),
@@ -68,7 +70,7 @@ const getAllChats = async (req, res) => {
     const limit = Math.min(parseInt(req.query.limit) || 200, 500);
 
     const conversations = await Conversation.find({ isActive: true, lastMessage: { $ne: null } })
-      .populate('userId', 'username phone email profileImage')
+      .populate('userId', 'username phone email profileImage membership')
       .populate('anonymousUserId', 'nickname ipAddress lastSeen')
       .populate('lastMessage')
       .sort({ lastMessageAt: -1 })

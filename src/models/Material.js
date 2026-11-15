@@ -46,6 +46,12 @@ const materialSchema = new mongoose.Schema({
     name: String,
     contact: String,
     location: String
+  },
+  // Where to buy: shown to members only (services/materialContactService.js)
+  contact: {
+    phone: { type: String, trim: true, default: '' },
+    address: { type: String, trim: true, default: '' },
+    mapEmbedUrl: { type: String, trim: true, default: '' } // Google Maps embed URL
   }
 }, {
   timestamps: true

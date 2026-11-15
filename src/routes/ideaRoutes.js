@@ -9,6 +9,10 @@ const {
   validateSearch,
   handleValidationErrors 
 } = require('../middleware/validation');
+const { lockPremiumIdeas } = require('../services/ideaAccessService');
+
+// Premium ideas: total cost and materials list only for buyers (all responses below)
+router.use(lockPremiumIdeas);
 
 // @route   GET /api/ideas
 // @desc    Get ideas list
@@ -45,17 +49,18 @@ router.get('/size-ranges', ideaController.getSizeRanges);
 // @route   GET /api/ideas/featured
 // @desc    Get featured ideas
 // @access  Public
-router.get('/featured', ideaController.getFeaturedIdeas);
+router.get('/featured', optionalAuth, ideaController.getFeaturedIdeas);
 
 // @route   GET /api/ideas/popular
 // @desc    Get popular ideas
 // @access  Public
-router.get('/popular', ideaController.getPopularIdeas);
+router.get('/popular', optionalAuth, ideaController.getPopularIdeas);
 
 // @route   GET /api/ideas/search
 // @desc    Search ideas
 // @access  Public
 router.get('/search',
+  optionalAuth,
   validateSearch(),
   validatePagination(),
   handleValidationErrors,
