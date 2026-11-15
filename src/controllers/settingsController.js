@@ -7,7 +7,9 @@ const {
   getAppLinks,
   setAppLinks,
   getPhoneVerificationSetting,
-  setPhoneVerification
+  setPhoneVerification,
+  getBankAccountSetting,
+  setBankAccount
 } = require('../services/appSettingsService');
 const { runChatCleanup } = require('../services/chatRetentionService');
 
@@ -20,11 +22,12 @@ const internalError = (req, res, error, label) => {
 };
 
 const buildResponse = async () => {
-  const [sms, retention, links, verification] = await Promise.all([
+  const [sms, retention, links, verification, bank] = await Promise.all([
     getSmsParserPhoneSetting(),
     getChatRetentionSetting(),
     getAppLinks(),
-    getPhoneVerificationSetting()
+    getPhoneVerificationSetting(),
+    getBankAccountSetting()
   ]);
   return {
     smsParserPhone: sms.value,
@@ -35,7 +38,8 @@ const buildResponse = async () => {
     androidAppUrl: links.androidAppUrl,
     iosAppUrl: links.iosAppUrl,
     facebookPageUrl: links.facebookPageUrl,
-    phoneVerification: verification.value // false → sign-up without SMS verification
+    phoneVerification: verification.value, // false → sign-up without SMS verification
+    bankAccount: bank.value // deposit (wallet top-up) bank account
   };
 };
 
@@ -45,8 +49,8 @@ const buildResponse = async () => {
 const getPublicSettings = async (req, res) => {
   try {
     res.set('Cache-Control', 'public, max-age=60');
-    const [links, verification] = await Promise.all([getAppLinks(), getPhoneVerificationSetting()]);
-    res.status(200).json({ success: true, data: { ...links, phoneVerification: verification.value } });
+    const [links, verification, bank] = await Promise.all([getAppLinks(), getPhoneVerificationSetting(), getBankAccountSetting()]);
+    res.status(200).json({ success: true, data: { ...links, phoneVerification: verification.value, bankAccount: bank.value } });
   } catch (error) {
     internalError(req, res, error, 'Get public settings error:');
   }
@@ -68,8 +72,8 @@ const getSettings = async (req, res) => {
 // @access  Superadmin
 const updateSettings = async (req, res) => {
   try {
-    const { smsParserPhone, chatRetention, androidAppUrl, iosAppUrl, facebookPageUrl, phoneVerification } = req.body;
-    if ([smsParserPhone, chatRetention, androidAppUrl, iosAppUrl, facebookPageUrl, phoneVerification].every((v) => v === undefined)) {
+    const { smsParserPhone, chatRetention, androidAppUrl, iosAppUrl, facebookPageUrl, phoneVerification, bankAccount } = req.body;
+    if ([smsParserPhone, chatRetention, androidAppUrl, iosAppUrl, facebookPageUrl, phoneVerification, bankAccount].every((v) => v === undefined)) {
       return res.status(400).json({ success: false, message: 'Nothing to update' });
     }
 
@@ -77,6 +81,7 @@ const updateSettings = async (req, res) => {
     if ([androidAppUrl, iosAppUrl, facebookPageUrl].some((v) => v !== undefined)) {
       await setAppLinks({ androidAppUrl, iosAppUrl, facebookPageUrl }, req.user._id);
     }
+    if (bankAccount !== undefined) await setBankAccount(bankAccount, req.user._id);
     if (phoneVerification !== undefined) await setPhoneVerification(phoneVerification, req.user._id);
     if (smsParserPhone !== undefined) await setSmsParserPhone(smsParserPhone, req.user._id);
 

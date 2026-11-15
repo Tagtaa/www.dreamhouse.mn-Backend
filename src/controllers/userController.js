@@ -683,7 +683,38 @@ const getUserAvatar = async (req, res) => {
   }
 };
 
+// @desc    Change own 4-digit PIN (password) while signed in
+// @route   PUT /api/user/change-pin
+// @access  Private
+const changePin = async (req, res) => {
+  try {
+    const { currentPin, newPin } = req.body;
+    if (!/^[0-9]{4}$/.test(String(newPin || ''))) {
+      return res.status(400).json({ success: false, message: 'Шинэ ПИН 4 оронтой тоо байх ёстой' });
+    }
+    if (String(currentPin || '') === String(newPin)) {
+      return res.status(400).json({ success: false, message: 'Шинэ ПИН одоогийнхоос өөр байх ёстой' });
+    }
+
+    const user = await User.findById(req.user._id);
+    if (!user) {
+      return res.status(404).json({ success: false, message: errorMessageService.getMessage('USER_NOT_FOUND', errorMessageService.getLocaleFromRequest(req)) });
+    }
+    if (!(await user.comparePassword(String(currentPin || '')))) {
+      return res.status(400).json({ success: false, message: 'Одоогийн ПИН буруу байна', code: 'WRONG_PIN' });
+    }
+
+    user.password = String(newPin); // hashed by the model's pre-save hook
+    await user.save();
+    res.status(200).json({ success: true, message: 'ПИН амжилттай солигдлоо' });
+  } catch (error) {
+    console.error('Change PIN error:', error);
+    res.status(500).json({ success: false, message: errorMessageService.getMessage('INTERNAL_SERVER_ERROR', errorMessageService.getLocaleFromRequest(req)) });
+  }
+};
+
 module.exports = {
+  changePin,
   getProfile,
   updateProfile,
   updateAccountInfo,

@@ -188,7 +188,39 @@ async function setPhoneVerification(value, adminId) {
   return getPhoneVerificationSetting();
 }
 
+// Bank account users transfer money to when topping up their wallet (deposits).
+// Shown by the mobile app and the website; edited in Settings → General Preferences.
+const BANK_ACCOUNT_KEY = 'bankAccount';
+const DEFAULT_BANK_ACCOUNT = '5403388975';
+const BANK_ACCOUNT_PATTERN = /^[0-9]{6,20}$/;
+
+async function getBankAccountSetting() {
+  const doc = await AppSetting.findOne({ key: BANK_ACCOUNT_KEY }).lean();
+  return {
+    value: doc && typeof doc.value === 'string' && doc.value ? doc.value : DEFAULT_BANK_ACCOUNT,
+    updatedAt: doc ? doc.updatedAt : null
+  };
+}
+
+async function setBankAccount(value, adminId) {
+  const account = String(value || '').replace(/[\s-]/g, '');
+  if (!BANK_ACCOUNT_PATTERN.test(account)) {
+    const err = new Error('Bank account must be 6-20 digits');
+    err.status = 400;
+    throw err;
+  }
+  await AppSetting.findOneAndUpdate(
+    { key: BANK_ACCOUNT_KEY },
+    { value: account, updatedBy: adminId || null },
+    { upsert: true, new: true, setDefaultsOnInsert: true }
+  );
+  return getBankAccountSetting();
+}
+
 module.exports = {
+  getBankAccountSetting,
+  setBankAccount,
+  DEFAULT_BANK_ACCOUNT,
   getPhoneVerificationSetting,
   isPhoneVerificationRequired,
   setPhoneVerification,

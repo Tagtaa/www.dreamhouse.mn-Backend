@@ -68,10 +68,11 @@ const PERMISSION_CATALOG = [
     { key: 'edit', label: 'Edit materials' },
     { key: 'delete', label: 'Delete materials' }
   ] },
-  { key: 'calculations', label: 'Calculations', path: '/dashboard/calculations-list', actions: [
+  // Category (/dashboard/category) and Subcategory (/dashboard/calculations-list) pages
+  { key: 'calculations', label: 'Category & Subcategory', path: '/dashboard/category', actions: [
     { key: 'create', label: 'Add types, shapes and options' },
     { key: 'edit', label: 'Edit types, shapes and options' },
-    { key: 'delete', label: 'Delete types and history' }
+    { key: 'delete', label: 'Delete types and options' }
   ] },
   { key: 'reports', label: 'Report', path: '/dashboard/report-list', actions: [] },
   { key: 'admins', label: 'Admin list', path: '/dashboard/admin-list', actions: [

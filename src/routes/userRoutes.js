@@ -53,6 +53,11 @@ router.get('/wallet', auth, userController.getWallet);
 // @access  Private
 router.get('/membership', auth, userController.getMembership);
 
+// @route   PUT /api/user/change-pin
+// @desc    Change own PIN (current PIN + new 4-digit PIN)
+// @access  Private
+router.put('/change-pin', auth, userController.changePin);
+
 // @route   DELETE /api/user/account
 // @desc    Delete user account
 // @access  Private
