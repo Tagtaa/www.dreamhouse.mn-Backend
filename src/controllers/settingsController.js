@@ -3,7 +3,11 @@ const {
   getSmsParserPhoneSetting,
   setSmsParserPhone,
   getChatRetentionSetting,
-  setChatRetention
+  setChatRetention,
+  getAppLinks,
+  setAppLinks,
+  getPhoneVerificationSetting,
+  setPhoneVerification
 } = require('../services/appSettingsService');
 const { runChatCleanup } = require('../services/chatRetentionService');
 
@@ -16,14 +20,36 @@ const internalError = (req, res, error, label) => {
 };
 
 const buildResponse = async () => {
-  const [sms, retention] = await Promise.all([getSmsParserPhoneSetting(), getChatRetentionSetting()]);
+  const [sms, retention, links, verification] = await Promise.all([
+    getSmsParserPhoneSetting(),
+    getChatRetentionSetting(),
+    getAppLinks(),
+    getPhoneVerificationSetting()
+  ]);
   return {
     smsParserPhone: sms.value,
     source: sms.source, // 'dashboard' | 'env' | 'default'
     updatedAt: sms.updatedAt,
     chatRetention: retention.value, // '1d' | '2d' | '1w' | '2w' | '1m' | 'never'
-    chatRetentionUpdatedAt: retention.updatedAt
+    chatRetentionUpdatedAt: retention.updatedAt,
+    androidAppUrl: links.androidAppUrl,
+    iosAppUrl: links.iosAppUrl,
+    facebookPageUrl: links.facebookPageUrl,
+    phoneVerification: verification.value // false → sign-up without SMS verification
   };
+};
+
+// @desc    Public website settings (app download links for the landing pages)
+// @route   GET /api/public-settings
+// @access  Public
+const getPublicSettings = async (req, res) => {
+  try {
+    res.set('Cache-Control', 'public, max-age=60');
+    const [links, verification] = await Promise.all([getAppLinks(), getPhoneVerificationSetting()]);
+    res.status(200).json({ success: true, data: { ...links, phoneVerification: verification.value } });
+  } catch (error) {
+    internalError(req, res, error, 'Get public settings error:');
+  }
 };
 
 // @desc    App settings shown in Settings → Preferences
@@ -42,11 +68,16 @@ const getSettings = async (req, res) => {
 // @access  Superadmin
 const updateSettings = async (req, res) => {
   try {
-    const { smsParserPhone, chatRetention } = req.body;
-    if (smsParserPhone === undefined && chatRetention === undefined) {
+    const { smsParserPhone, chatRetention, androidAppUrl, iosAppUrl, facebookPageUrl, phoneVerification } = req.body;
+    if ([smsParserPhone, chatRetention, androidAppUrl, iosAppUrl, facebookPageUrl, phoneVerification].every((v) => v === undefined)) {
       return res.status(400).json({ success: false, message: 'Nothing to update' });
     }
 
+    // App links first: both are validated before either is saved
+    if ([androidAppUrl, iosAppUrl, facebookPageUrl].some((v) => v !== undefined)) {
+      await setAppLinks({ androidAppUrl, iosAppUrl, facebookPageUrl }, req.user._id);
+    }
+    if (phoneVerification !== undefined) await setPhoneVerification(phoneVerification, req.user._id);
     if (smsParserPhone !== undefined) await setSmsParserPhone(smsParserPhone, req.user._id);
 
     let cleanup;
@@ -69,4 +100,4 @@ const updateSettings = async (req, res) => {
   }
 };
 
-module.exports = { getSettings, updateSettings };
+module.exports = { getSettings, updateSettings, getPublicSettings };

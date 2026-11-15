@@ -2,7 +2,7 @@ const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const SmsVerification = require('../models/SmsVerification');
 const errorMessageService = require('../services/errorMessageService');
-const { getSmsParserPhone } = require('../services/appSettingsService');
+const { getSmsParserPhone, isPhoneVerificationRequired } = require('../services/appSettingsService');
 
 // Generate JWT token
 const generateToken = (userId, role) => {
@@ -39,7 +39,24 @@ const sendVerificationCodeController = async (req, res) => {
       const locale = errorMessageService.getLocaleFromRequest(req);
       return res.status(400).json({
         success: false,
-        message: errorMessageService.getMessage('USER_ALREADY_EXISTS', locale)
+        message: errorMessageService.getMessage('USER_ALREADY_EXISTS', locale),
+        code: 'USER_ALREADY_EXISTS' // apps send the user to the password (login) step
+      });
+    }
+
+    // Phone verification turned off in Settings → no code needed, go straight to choosing a password
+    if (!(await isPhoneVerificationRequired())) {
+      return res.status(200).json({
+        success: true,
+        message: 'Phone verification is not required',
+        data: {
+          otpCode: '',
+          sendToNumber: '',
+          instructions: '',
+          expiresIn: 0,
+          phone,
+          requiresSmsConfirmation: false
+        }
       });
     }
 
@@ -180,15 +197,16 @@ const signup = async (req, res) => {
       });
     }
 
-    // Verify that phone was verified with SMS parser confirmation
-    const verification = await SmsVerification.findOne({
+    // Verify that phone was verified with SMS parser confirmation (unless turned off in Settings)
+    const verificationRequired = await isPhoneVerificationRequired();
+    const verification = verificationRequired && await SmsVerification.findOne({
       phone,
       isUsed: true,
       parserConfirmedAt: { $exists: true, $ne: null }, // SMS parser confirmation required
       createdAt: { $gt: new Date(Date.now() - 10 * 60 * 1000) } // Last 10 minutes
     });
 
-    if (!verification) {
+    if (verificationRequired && !verification) {
       return res.status(400).json({
         success: false,
         message: errorMessageService.getMessage('SMS_VERIFICATION_REQUIRED', errorMessageService.getLocaleFromRequest(req)),
@@ -201,7 +219,7 @@ const signup = async (req, res) => {
       phone,
       username,
       password,
-      isVerified: true
+      isVerified: verificationRequired // false = joined while phone verification was off
     });
 
     await user.save();
@@ -602,11 +620,14 @@ const resetPassword = async (req, res) => {
 const checkPhone = async (req, res) => {
   try {
     const { phone } = req.body;
-    const registered = Boolean(await User.exists({ phone }));
+    const [registered, phoneVerificationRequired] = await Promise.all([
+      User.exists({ phone }).then(Boolean),
+      isPhoneVerificationRequired()
+    ]);
 
     res.status(200).json({
       success: true,
-      data: { phone, registered }
+      data: { phone, registered, phoneVerificationRequired }
     });
   } catch (error) {
     console.error('Check phone error:', error);

@@ -87,7 +87,114 @@ async function setChatRetention(value, adminId) {
   return getChatRetentionSetting();
 }
 
+// Website links: "Андройд апп" / "IOS апп" download buttons and the "Facebook page" buttons
+const APP_LINK_KEYS = { android: 'androidAppUrl', ios: 'iosAppUrl', facebook: 'facebookPageUrl' };
+const DEFAULT_APP_LINKS = {
+  android: 'https://play.google.com/store/apps',
+  ios: 'https://www.apple.com/app-store/',
+  facebook: 'https://www.facebook.com/dreamhouse.mn/'
+};
+
+const isValidAppUrl = (value) => {
+  if (value === '') return true;
+  try {
+    const url = new URL(value);
+    return ['http:', 'https:'].includes(url.protocol) && value.length <= 500;
+  } catch (e) {
+    return false;
+  }
+};
+
+async function getAppLinks() {
+  const docs = await AppSetting.find({ key: { $in: Object.values(APP_LINK_KEYS) } }).lean();
+  const byKey = Object.fromEntries(docs.map((d) => [d.key, d.value]));
+  return {
+    androidAppUrl: byKey[APP_LINK_KEYS.android] || DEFAULT_APP_LINKS.android,
+    iosAppUrl: byKey[APP_LINK_KEYS.ios] || DEFAULT_APP_LINKS.ios,
+    facebookPageUrl: byKey[APP_LINK_KEYS.facebook] || DEFAULT_APP_LINKS.facebook
+  };
+}
+
+// Empty string resets a link to its default store page
+const LINK_LABELS = { android: 'Android app link', ios: 'IOS app link', facebook: 'Facebook page link' };
+
+async function setAppLinks({ androidAppUrl, iosAppUrl, facebookPageUrl }, adminId) {
+  const updates = [
+    ['android', androidAppUrl],
+    ['ios', iosAppUrl],
+    ['facebook', facebookPageUrl]
+  ].filter(([, v]) => v !== undefined);
+
+  for (const [kind, raw] of updates) {
+    const value = String(raw || '').trim();
+    if (!isValidAppUrl(value)) {
+      const err = new Error(`${LINK_LABELS[kind]} must be a valid http(s) URL`);
+      err.status = 400;
+      throw err;
+    }
+  }
+  for (const [kind, raw] of updates) {
+    const value = String(raw || '').trim();
+    if (value) {
+      await AppSetting.findOneAndUpdate(
+        { key: APP_LINK_KEYS[kind] },
+        { value, updatedBy: adminId || null },
+        { upsert: true, new: true, setDefaultsOnInsert: true }
+      );
+    } else {
+      await AppSetting.deleteOne({ key: APP_LINK_KEYS[kind] });
+    }
+  }
+  return getAppLinks();
+}
+
+// Phone (SMS) verification during sign-up. On by default; when turned off from
+// Settings → General Preferences, new users register with phone + password only.
+const PHONE_VERIFICATION_KEY = 'phoneVerification';
+let phoneVerificationCache = { value: null, at: 0 };
+
+async function getPhoneVerificationSetting() {
+  const doc = await AppSetting.findOne({ key: PHONE_VERIFICATION_KEY }).lean();
+  return { value: doc ? doc.value !== false : true, updatedAt: doc ? doc.updatedAt : null };
+}
+
+// Fast path used by the sign-up endpoints (cached briefly). Fails safe: verification stays on.
+async function isPhoneVerificationRequired() {
+  if (phoneVerificationCache.value !== null && Date.now() - phoneVerificationCache.at < CACHE_MS) {
+    return phoneVerificationCache.value;
+  }
+  try {
+    const { value } = await getPhoneVerificationSetting();
+    phoneVerificationCache = { value, at: Date.now() };
+    return value;
+  } catch (error) {
+    console.error('Read phone verification setting error:', error);
+    return phoneVerificationCache.value !== null ? phoneVerificationCache.value : true;
+  }
+}
+
+async function setPhoneVerification(value, adminId) {
+  if (typeof value !== 'boolean') {
+    const err = new Error('Phone verification must be true or false');
+    err.status = 400;
+    throw err;
+  }
+  await AppSetting.findOneAndUpdate(
+    { key: PHONE_VERIFICATION_KEY },
+    { value, updatedBy: adminId || null },
+    { upsert: true, new: true, setDefaultsOnInsert: true }
+  );
+  phoneVerificationCache = { value, at: Date.now() };
+  return getPhoneVerificationSetting();
+}
+
 module.exports = {
+  getPhoneVerificationSetting,
+  isPhoneVerificationRequired,
+  setPhoneVerification,
+  getAppLinks,
+  setAppLinks,
+  DEFAULT_APP_LINKS,
   getSmsParserPhone,
   getSmsParserPhoneSetting,
   setSmsParserPhone,

@@ -546,6 +546,8 @@ app.use('/uploads/chat', (req, res, next) => {
 }, express.static(path.join(__dirname, 'uploads', 'chat'), { index: false, dotfiles: 'deny', maxAge: '7d' }));
 
 // API routes
+// Public website settings (app download links) — no login
+app.get('/api/public-settings', require('./src/controllers/settingsController').getPublicSettings);
 app.use('/api/auth', authRoutes);
 app.use('/api/admin-auth', adminAuthRoutes); // Dashboard accounts (admins collection)
 app.use('/api/user', csrfProtection, userRoutes);
