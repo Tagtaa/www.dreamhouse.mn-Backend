@@ -545,6 +545,13 @@ app.use('/uploads/chat', (req, res, next) => {
   next();
 }, express.static(path.join(__dirname, 'uploads', 'chat'), { index: false, dotfiles: 'deny', maxAge: '7d' }));
 
+// Category / material / idea images saved on this server when Firebase is not configured
+// (see saveImageLocally in src/config/firebase.js).
+app.use('/uploads/images', (req, res, next) => {
+  res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+  next();
+}, express.static(path.join(__dirname, 'uploads', 'images'), { index: false, dotfiles: 'deny', maxAge: '7d' }));
+
 // API routes
 // Public website settings (app download links) — no login
 app.get('/api/public-settings', require('./src/controllers/settingsController').getPublicSettings);

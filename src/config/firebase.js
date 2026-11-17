@@ -1,4 +1,7 @@
 const admin = require('firebase-admin');
+const fs = require('fs');
+const path = require('path');
+const crypto = require('crypto');
 
 const initializeFirebase = () => {
   try {
@@ -88,9 +91,46 @@ const uploadAvatar = async (fileBuffer, fileName, userId) => {
   }
 };
 
+// ---- Local fallback (used only when Firebase is not configured, e.g. local dev) ----
+// Images are written to uploads/images/<folder>/ and served at /uploads/images/...
+const LOCAL_IMAGE_DIR = path.resolve(__dirname, '../../uploads/images');
+const LOCAL_IMAGE_TYPES = { 'image/jpeg': '.jpg', 'image/png': '.png', 'image/gif': '.gif', 'image/webp': '.webp' };
+
+// Real type from the file's bytes, never from the uploaded name or declared type
+const detectImageType = (buffer) => {
+  if (!buffer || buffer.length < 12) return null;
+  if (buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) return 'image/jpeg';
+  if (buffer.slice(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) return 'image/png';
+  if (buffer.slice(0, 4).toString('ascii') === 'GIF8') return 'image/gif';
+  if (buffer.slice(0, 4).toString('ascii') === 'RIFF' && buffer.slice(8, 12).toString('ascii') === 'WEBP') return 'image/webp';
+  return null;
+};
+
+const saveImageLocally = async (buffer, folder) => {
+  const ext = LOCAL_IMAGE_TYPES[detectImageType(buffer)];
+  if (!ext) throw new Error('Only JPG, PNG, GIF or WEBP images are allowed');
+  const safeFolder = String(folder || 'misc').replace(/[^a-zA-Z0-9_-]/g, '') || 'misc';
+  const dir = path.join(LOCAL_IMAGE_DIR, safeFolder);
+  await fs.promises.mkdir(dir, { recursive: true });
+  const name = `${Date.now()}-${crypto.randomUUID()}${ext}`;
+  await fs.promises.writeFile(path.join(dir, name), buffer);
+  const base = (process.env.PUBLIC_BASE_URL || `http://localhost:${process.env.PORT || 8080}`).replace(/\/$/, '');
+  const url = `${base}/uploads/images/${safeFolder}/${name}`;
+  console.warn(`⚠️  Firebase not configured — image saved locally: ${url}`);
+  return url;
+};
+
 // Upload image from base64 or buffer to Firebase Storage
+// (falls back to local disk when Firebase is not configured)
 const uploadImageToFirebase = async (imageData, folder, filename) => {
   try {
+    if (!admin.apps.length) {
+      let localBuffer;
+      if (typeof imageData === 'string') localBuffer = Buffer.from(imageData.replace(/^data:image\/\w+;base64,/, ''), 'base64');
+      else if (Buffer.isBuffer(imageData)) localBuffer = imageData;
+      else throw new Error('Invalid image data format');
+      return await saveImageLocally(localBuffer, folder);
+    }
     const bucket = getBucket();
     let buffer;
     let contentType = 'image/jpeg';
