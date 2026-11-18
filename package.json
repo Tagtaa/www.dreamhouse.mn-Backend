@@ -13,7 +13,8 @@
     "seed": "node src/seeds/seedData.js",
     "seed:subscriptions": "node src/seeds/subscriptionSeedData.js",
     "migrate:users": "node src/scripts/migrateUsers.js",
-    "migrate:admins": "node src/scripts/migrateAdmins.js"
+    "migrate:admins": "node src/scripts/migrateAdmins.js",
+    "migrate:ingredients": "node src/scripts/migrateIngredientsToMaterials.js"
   },
   "keywords": [
     "construction",

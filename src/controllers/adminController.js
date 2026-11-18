@@ -1316,31 +1316,26 @@ const cleanupSystem = async (req, res) => {
 };
 
 
+// Material ingredients — same data as GET/PUT /api/materials/:materialId/ingredients
+// (each material owns its ingredients; see services/ingredientService.js)
+const ingredientService = require('../services/ingredientService');
+
 // @desc    Get material ingredients for admin editing
 // @route   GET /api/admin/materials/:id/ingredients
 // @access  Admin
 const getMaterialIngredients = async (req, res) => {
   try {
-    const { id } = req.params;
-
-    const material = await Material.findById(id).select('name ingredients category');
+    const material = await Material.findById(req.params.id).select('name category');
     if (!material) {
       return res.status(404).json({
         success: false,
         message: errorMessageService.getMessage('MATERIAL_NOT_FOUND', errorMessageService.getLocaleFromRequest(req))
       });
     }
-
+    const ingredients = await ingredientService.getMaterialIngredients(material._id, { includeInactive: true });
     res.status(200).json({
       success: true,
-      data: {
-        material: {
-          id: material._id,
-          name: material.name,
-          category: material.category,
-          ingredients: material.ingredients || []
-        }
-      }
+      data: { material: { id: material._id, name: material.name, category: material.category, ingredients } }
     });
   } catch (error) {
     console.error('Get material ingredients error:', error);
@@ -1351,65 +1346,31 @@ const getMaterialIngredients = async (req, res) => {
   }
 };
 
-// @desc    Update material ingredients
+// @desc    Replace material ingredients
 // @route   PUT /api/admin/materials/:id/ingredients
 // @access  Admin
 const updateMaterialIngredients = async (req, res) => {
   try {
-    const { id } = req.params;
-    const { ingredients } = req.body;
-
-    // Validate ingredients structure
-    if (!Array.isArray(ingredients)) {
-      return res.status(400).json({
-        success: false,
-        message: errorMessageService.getMessage('INGREDIENTS_ARRAY', errorMessageService.getLocaleFromRequest(req))
-      });
-    }
-
-    // Validate each ingredient
-    for (const ingredient of ingredients) {
-      if (!ingredient.name || !ingredient.unit ||
-        typeof ingredient.requiredPercent !== 'number' ||
-        typeof ingredient.costPerM3 !== 'number') {
-        return res.status(400).json({
-          success: false,
-          message: errorMessageService.getMessage('INGREDIENT_FIELDS_REQUIRED', errorMessageService.getLocaleFromRequest(req))
-        });
-      }
-
-      // Validate percentage range
-      if (ingredient.requiredPercent < 0 || ingredient.requiredPercent > 100) {
-        return res.status(400).json({
-          success: false,
-          message: errorMessageService.getMessage('REQUIRED_PERCENT_RANGE', errorMessageService.getLocaleFromRequest(req))
-        });
-      }
-    }
-
-    const material = await Material.findById(id);
+    const material = await Material.findById(req.params.id).select('name');
     if (!material) {
       return res.status(404).json({
         success: false,
         message: errorMessageService.getMessage('MATERIAL_NOT_FOUND', errorMessageService.getLocaleFromRequest(req))
       });
     }
-
-    material.ingredients = ingredients;
-    await material.save();
-
+    const ingredients = await ingredientService.replaceMaterialIngredients(material._id, req.body?.ingredients);
     res.status(200).json({
       success: true,
       message: errorMessageService.getMessage('MATERIAL_INGREDIENTS_UPDATED', errorMessageService.getLocaleFromRequest(req)),
-      data: {
-        material: {
-          id: material._id,
-          name: material.name,
-          ingredients: material.ingredients
-        }
-      }
+      data: { material: { id: material._id, name: material.name, ingredients } }
     });
   } catch (error) {
+    if (error instanceof ingredientService.IngredientValidationError) {
+      return res.status(400).json({
+        success: false,
+        message: errorMessageService.getMessage(error.key, errorMessageService.getLocaleFromRequest(req), error.params)
+      });
+    }
     console.error('Update material ingredients error:', error);
     res.status(500).json({
       success: false,
@@ -1418,68 +1379,43 @@ const updateMaterialIngredients = async (req, res) => {
   }
 };
 
-// @desc    Preview ingredients calculation
+// @desc    Preview ingredients cost for a sample volume/area
 // @route   POST /api/admin/materials/:id/ingredients/preview
 // @access  Admin
 const previewIngredientsCalculation = async (req, res) => {
   try {
-    const { id } = req.params;
     const { sampleVolume = 1, sampleArea = 1, calculationType = 'wall' } = req.body;
-
-    const material = await Material.findById(id).select('name ingredients');
+    const material = await Material.findById(req.params.id).select('name');
     if (!material) {
       return res.status(404).json({
         success: false,
         message: errorMessageService.getMessage('MATERIAL_NOT_FOUND', errorMessageService.getLocaleFromRequest(req))
       });
     }
-
-    const preview = {
-      material: {
-        name: material.name,
-        id: material._id
-      },
-      sampleCalculation: {
-        volume: sampleVolume,
-        area: sampleArea,
-        calculationType,
-        ingredients: []
-      },
-      totalIngredientCost: 0
-    };
-
-    if (material.ingredients && material.ingredients.length > 0) {
-      material.ingredients.forEach(ingredient => {
-        // Calculate based on calculation type
-        let baseValue = sampleVolume; // Default to volume
-
-        // Some ingredients might be calculated per area instead of volume
-        if (calculationType === 'floor_tiles' || calculationType === 'wall_decoration') {
-          baseValue = sampleArea;
-        }
-
-        const requiredAmount = baseValue * (ingredient.requiredPercent / 100); // requiredPercent as percentage
-        const totalCost = requiredAmount * ingredient.costPerM3;
-
-        preview.sampleCalculation.ingredients.push({
-          name: ingredient.name,
-          requiredAmount: Math.round(requiredAmount * 100) / 100,
-          unit: ingredient.unit,
-          unitCost: ingredient.costPerM3,
-          totalCost: Math.round(totalCost * 100) / 100,
-          percentage: ingredient.requiredPercent
-        });
-
-        preview.totalIngredientCost += totalCost;
-      });
-    }
-
-    preview.totalIngredientCost = Math.round(preview.totalIngredientCost * 100) / 100;
-
-    res.status(200).json({
-      success: true,
-      data: { preview }
+    const ingredients = await ingredientService.getMaterialIngredients(material._id);
+    const round = n => Math.round(n * 100) / 100;
+    const rows = ingredients.map(ing => {
+      const kind = ingredientService.unitKind(ing.unit);
+      // Same formula as the apps: base (m3 volume or m2 area) × percent / 100 × unit price
+      const base = kind === 'm2' ? sampleArea : sampleVolume;
+      const unitCost = kind === 'm3' ? ing.pricePerM3 : kind === 'm2' ? ing.pricePerM2 : ing.priceForPer1Percent;
+      const requiredAmount = kind === 'percent' ? (ing.percentValue || 0) : base * ((ing.percentValue || 0) / 100);
+      const totalCost = requiredAmount * (unitCost || 0);
+      return {
+        name: ing.name,
+        requiredAmount: round(requiredAmount),
+        unit: ing.unit,
+        unitCost: unitCost || 0,
+        totalCost: round(totalCost),
+        percentage: ing.percentValue
+      };
     });
+    const preview = {
+      material: { name: material.name, id: material._id },
+      sampleCalculation: { volume: sampleVolume, area: sampleArea, calculationType, ingredients: rows },
+      totalIngredientCost: round(rows.reduce((sum, r) => sum + r.totalCost, 0))
+    };
+    res.status(200).json({ success: true, data: { preview } });
   } catch (error) {
     console.error('Preview ingredients calculation error:', error);
     res.status(500).json({

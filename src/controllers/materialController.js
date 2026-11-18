@@ -1,9 +1,9 @@
 const Material = require('../models/Material');
 const MaterialCategory = require('../models/MaterialCategory');
 const ParentCategory = require('../models/ParentCategory');
-const Ingredient = require('../models/Ingredient');
 const errorMessageService = require('../services/errorMessageService');
 const { normalizeContact } = require('../services/materialContactService');
+const ingredientService = require('../services/ingredientService');
 
 // @desc    Get materials list
 // @route   GET /api/materials
@@ -110,7 +110,6 @@ const getMaterials = async (req, res) => {
           select: 'name'
         }
       })
-      .populate('ingredients')
       .select('_id name category price specs rating width length height unit description images ingredients thicknessOptions likeCount likedBy isPremium isActive tags popularity viewCount createdAt updatedAt supplier contact')
       .limit(pageLimit)
       .skip(pageSkip)
@@ -138,51 +137,12 @@ const getMaterials = async (req, res) => {
     const locale = errorMessageService.getLocaleFromRequest(req);
     const pieceText = errorMessageService.getMessage('PIECE', locale);
     
-    // Add ingredients to each category in materials and process materials
+    // Each material carries its own ingredients (one query for the whole page)
+    const ingredientMap = await ingredientService.getIngredientsByMaterialIds(materials.map(m => m._id));
+
     const filteredMaterials = await Promise.all(
       materials.map(async (material) => {
         const materialObj = material.toObject();
-        
-        // If category exists, add its ingredients (category güncellendiğinde burada güncel ingredients görünecek)
-        if (materialObj.category && materialObj.category._id) {
-          const categoryIngredients = await Ingredient.find({ 
-            materialCategory: materialObj.category._id,
-            isActive: true 
-          }).sort({ sortOrder: 1, createdAt: -1 });
-          
-          // Format category ingredients based on unit (same as material ingredients)
-          const formattedCategoryIngredients = categoryIngredients.map(ingredient => {
-            const processedIngredient = {
-              _id: ingredient._id,
-              name: ingredient.name,
-              unit: ingredient.unit
-            };
-            
-            // Determine type based on unit
-            const unit = String(ingredient.unit || '').trim().toLowerCase();
-            const isM3 = unit === 'm3';
-            const isM2 = unit === 'm2';
-            
-            // Add fields based on unit
-            if (isM3) {
-              // m3 type - use percentValue and pricePerM3
-              processedIngredient.percentValue = ingredient.requiredPercent ?? null;
-              processedIngredient.pricePerM3 = ingredient.pricePerM3 ?? null;
-            } else if (isM2) {
-              // m2 type - use percentValue and pricePerM2
-              processedIngredient.percentValue = ingredient.requiredPercent ?? null;
-              processedIngredient.pricePerM2 = ingredient.pricePerM2 ?? null;
-            } else {
-              // percentage type - use percentValue and priceForPer1Percent
-              processedIngredient.percentValue = ingredient.requiredPercent ?? null;
-              processedIngredient.priceForPer1Percent = ingredient.priceForPer1Percent ?? null;
-            }
-            
-            return processedIngredient;
-          });
-          
-          materialObj.category.ingredients = formattedCategoryIngredients;
-        }
         
         // Localize specs - replace "piece" with localized text
         if (materialObj.specs) {
@@ -194,8 +154,8 @@ const getMaterials = async (req, res) => {
           delete materialObj.category.parentCategory;
         }
         
-        // Remove material's own ingredients field (category.ingredients is used instead)
-        delete materialObj.ingredients;
+        // Material's own ingredients (also mirrored to category.ingredients for older app versions)
+        ingredientService.attachIngredients(materialObj, ingredientMap.get(material._id.toString()) || []);
         
         if (req.user) {
           const userId = req.user._id.toString();
@@ -240,18 +200,8 @@ const getCategories = async (req, res) => {
       .populate('parentCategory', 'name')
       .sort('-createdAt');
 
-    // Get ingredients for each category
-    const categoriesWithIngredients = await Promise.all(
-      categories.map(async (category) => {
-        const categoryObj = category.toObject();
-        const ingredients = await Ingredient.find({ 
-          materialCategory: category._id,
-          isActive: true 
-        }).sort({ sortOrder: 1, createdAt: -1 });
-        categoryObj.ingredients = ingredients;
-        return categoryObj;
-      })
-    );
+    // Ingredients now belong to materials, not categories
+    const categoriesWithIngredients = categories.map(category => category.toObject());
 
     res.status(200).json({
       success: true,
@@ -351,118 +301,12 @@ const createCategory = async (req, res) => {
 
     await category.save();
 
-    // Create ingredients if provided AND not empty
-    // Only validate percentage if ingredients are actually provided and not empty
-    // IMPORTANT: Skip validation completely if ingredients is undefined, null, empty array, or not an array
-    if (ingredients !== undefined && ingredients !== null && Array.isArray(ingredients) && ingredients.length > 0) {
-      const createdIngredients = [];
-      
-      for (const ingredientData of ingredients) {
-        const { name: ingredientName, unit } = ingredientData;
-        
-        // Determine type based on unit
-        const unitStr = String(unit || '').trim().toLowerCase();
-        const isM3 = unitStr === 'm3';
-        const isM2 = unitStr === 'm2';
-        
-        // Extract fields based on unit - support both old and new field names
-        let requiredPercent, priceForPer1Percent, pricePerM3, pricePerM2;
-        
-        if (isM3) {
-          // m3 type - use m3Amount and pricePerM3
-          requiredPercent = ingredientData.m3Amount ?? ingredientData.requiredPercent;
-          pricePerM3 = ingredientData.pricePerM3;
-          
-          // m3Amount and pricePerM3 are nullable
-        } else if (isM2) {
-          // m2 type - use m2Amount and pricePerM2
-          requiredPercent = ingredientData.m2Amount ?? ingredientData.requiredPercent;
-          pricePerM2 = ingredientData.pricePerM2;
-          
-          // m2Amount and pricePerM2 are nullable
-        } else {
-          // percentage type (default) - use percentValue and priceForPer1Percent
-          requiredPercent = ingredientData.percentValue ?? ingredientData.requiredPercent;
-          priceForPer1Percent = ingredientData.priceForPer1Percent;
-          
-          // Validate: percentValue and priceForPer1Percent must be provided together
-          if (ingredientName) {
-            const hasPercentValue = requiredPercent !== undefined && requiredPercent !== null;
-            const hasPrice = priceForPer1Percent !== undefined && priceForPer1Percent !== null;
-            
-            if (!hasPercentValue || !hasPrice) {
-              await MaterialCategory.findByIdAndDelete(category._id);
-              return res.status(400).json({
-                success: false,
-                message: errorMessageService.getMessage('PERCENTAGE_TYPE_FIELDS_REQUIRED', errorMessageService.getLocaleFromRequest(req))
-              });
-            }
-          }
-        }
-
-        const ingredient = new Ingredient({
-          materialCategory: category._id,
-          name: ingredientName,
-          unit,
-          // Set fields based on unit
-          requiredPercent: isM3 || isM2 ? requiredPercent : (requiredPercent),
-          priceForPer1Percent: !isM3 && !isM2 ? priceForPer1Percent : undefined,
-          pricePerM3: isM3 ? pricePerM3 : undefined,
-          pricePerM2: isM2 ? pricePerM2 : undefined
-        });
-
-        await ingredient.save();
-        createdIngredients.push(ingredient);
-      }
-
-      // CRITICAL: Only validate percentage if:
-      // NO ingredient has unit 'm3' or 'm2'
-      // If any ingredient has unit 'm3' or 'm2', skip percentage validation
-      
-      // Check if any ingredient has unit 'm3' or 'm2'
-      const hasM3OrM2Unit = ingredients.some(ing => {
-        const unit = String(ing.unit || '').trim().toLowerCase();
-        return unit === 'm3' || unit === 'm2';
-      });
-      
-      console.log('🔍 DEBUG createCategory - hasM3OrM2Unit:', hasM3OrM2Unit);
-      console.log('🔍 DEBUG createCategory - ingredients units:', ingredients.map(ing => ing.unit));
-      
-      // Only validate percentage if no ingredient has m3/m2 unit
-      if (!hasM3OrM2Unit && createdIngredients.length > 0) {
-        const totalPercent = createdIngredients.reduce((sum, ing) => {
-          const percent = ing.requiredPercent || 0;
-          console.log('🔍 DEBUG createCategory - ingredient:', ing.name, 'requiredPercent:', ing.requiredPercent);
-          return sum + percent;
-        }, 0);
-        console.log('🔍 DEBUG createCategory - percentage validation - totalPercent:', totalPercent);
-        console.log('🔍 DEBUG createCategory - createdIngredients:', createdIngredients.map(ing => ({ name: ing.name, requiredPercent: ing.requiredPercent })));
-        if (Math.abs(totalPercent - 100) > 0.01) {
-          // Delete created ingredients
-          await Ingredient.deleteMany({ materialCategory: category._id });
-          await MaterialCategory.findByIdAndDelete(category._id);
-          return res.status(400).json({
-            success: false,
-            message: errorMessageService.getMessage('TOTAL_PERCENTAGE_MUST_BE_100', errorMessageService.getLocaleFromRequest(req), { total: totalPercent })
-          });
-        }
-      } else {
-        // Skip percentage validation if any ingredient has unit 'm3' or 'm2'
-        console.log('🔍 DEBUG createCategory - skipping percentage validation. Reason: ingredient has m3/m2 unit');
-      }
-    }
-    // If ingredients not provided, undefined, null, empty array, or not an array - skip validation completely
-    // This means NO validation will run, and category will be created successfully without ingredients
+    // Ingredients belong to materials now (PUT /api/materials/:id/ingredients); categories ignore them.
 
     // Populate parent category info
     await category.populate('parentCategory', 'name');
 
-    // Get ingredients for this category
-    const categoryIngredients = await Ingredient.find({ materialCategory: category._id });
-
-    // Convert category to object and add ingredients
     const categoryObj = category.toObject();
-    categoryObj.ingredients = categoryIngredients;
 
     res.status(201).json({
       success: true,
@@ -565,12 +409,7 @@ const updateCategory = async (req, res) => {
     await category.save();
     await category.populate('parentCategory', 'name');
 
-    // Get ingredients for this category
-    const categoryIngredients = await Ingredient.find({ materialCategory: category._id });
-
-    // Convert category to object and add ingredients
     const categoryObj = category.toObject();
-    categoryObj.ingredients = categoryIngredients;
 
     res.status(200).json({
       success: true,
@@ -848,7 +687,6 @@ const searchMaterials = async (req, res) => {
 const getMaterialById = async (req, res) => {
   try {
     const material = await Material.findById(req.params.id)
-      .populate('ingredients')
       .populate({
         path: 'category',
         select: '_id name images parentCategory percentValue',
@@ -883,81 +721,8 @@ const getMaterialById = async (req, res) => {
       delete materialObj.category.parentCategory;
     }
     
-    // Ensure ingredients field always exists (even if empty)
-    if (!materialObj.ingredients) {
-      materialObj.ingredients = [];
-    }
-    
-    // Format existing ingredients based on unit (if they exist)
-    if (materialObj.ingredients && materialObj.ingredients.length > 0) {
-      materialObj.ingredients = materialObj.ingredients.map(ingredient => {
-        const processedIngredient = {
-          _id: ingredient._id,
-          name: ingredient.name,
-          unit: ingredient.unit
-        };
-        
-        // Determine type based on unit
-        const unit = String(ingredient.unit || '').trim().toLowerCase();
-        const isM3 = unit === 'm3';
-        const isM2 = unit === 'm2';
-        
-        // Add fields based on unit
-        if (isM3) {
-          // m3 type - use percentValue and pricePerM3
-          processedIngredient.percentValue = ingredient.requiredPercent ?? null;
-          processedIngredient.pricePerM3 = ingredient.pricePerM3 ?? null;
-        } else if (isM2) {
-          // m2 type - use percentValue and pricePerM2
-          processedIngredient.percentValue = ingredient.requiredPercent ?? null;
-          processedIngredient.pricePerM2 = ingredient.pricePerM2 ?? null;
-        } else {
-          // percentage type - use percentValue and priceForPer1Percent
-          processedIngredient.percentValue = ingredient.requiredPercent ?? null;
-          processedIngredient.priceForPer1Percent = ingredient.priceForPer1Percent ?? null;
-        }
-        
-        return processedIngredient;
-      });
-    }
-    
-    // Add category ingredients if category exists
-    if (materialObj.category && materialObj.category._id) {
-      const categoryIngredients = await Ingredient.find({ 
-        materialCategory: materialObj.category._id,
-        isActive: true 
-      }).sort({ sortOrder: 1, createdAt: -1 });
-      
-      // Format category ingredients based on unit
-      const formattedCategoryIngredients = categoryIngredients.map(ingredient => {
-        const processedIngredient = {
-          _id: ingredient._id,
-          name: ingredient.name,
-          unit: ingredient.unit
-        };
-        
-        // Determine type based on unit
-        const unit = String(ingredient.unit || '').trim().toLowerCase();
-        const isM3 = unit === 'm3';
-        const isM2 = unit === 'm2';
-        
-        // Add fields based on unit
-        if (isM3) {
-          processedIngredient.percentValue = ingredient.requiredPercent ?? null;
-          processedIngredient.pricePerM3 = ingredient.pricePerM3 ?? null;
-        } else if (isM2) {
-          processedIngredient.percentValue = ingredient.requiredPercent ?? null;
-          processedIngredient.pricePerM2 = ingredient.pricePerM2 ?? null;
-        } else {
-          processedIngredient.percentValue = ingredient.requiredPercent ?? null;
-          processedIngredient.priceForPer1Percent = ingredient.priceForPer1Percent ?? null;
-        }
-        
-        return processedIngredient;
-      });
-      
-      materialObj.category.ingredients = formattedCategoryIngredients;
-    }
+    // Material's own ingredients (also mirrored to category.ingredients for older app versions)
+    ingredientService.attachIngredients(materialObj, await ingredientService.getMaterialIngredients(material._id));
     
     if (req.user) {
       const userId = req.user._id.toString();
@@ -1035,7 +800,7 @@ const createMaterial = async (req, res) => {
       unit,
       description,
       images,
-      ingredients, // Optional: ingredient IDs to override default category ingredients
+      ingredients, // Optional: the material's own ingredient rows (see below)
       thicknessOptions,
       isPremium,
       tags,
@@ -1061,50 +826,11 @@ const createMaterial = async (req, res) => {
       });
     }
 
-    // Get ingredients from category if not provided
-    let ingredientIds = ingredients;
-    if (!ingredientIds || ingredientIds.length === 0) {
-      const categoryIngredients = await Ingredient.find({ 
-        materialCategory: category,
-        isActive: true 
-      }).select('_id');
-      ingredientIds = categoryIngredients.map(ing => ing._id);
-      console.log('🔍 Material create - Auto-loaded ingredients from category:', {
-        categoryId: category,
-        ingredientsFound: categoryIngredients.length,
-        ingredientIds: ingredientIds
-      });
-    } else {
-      console.log('🔍 Material create - Ingredients provided in request:', {
-        ingredientIds: ingredientIds
-      });
-    }
-
-    // Validate total percentage is 100
-    // BUT skip validation if any ingredient has unit 'm3' or 'm2'
-    if (ingredientIds.length > 0) {
-      const ingredientDocs = await Ingredient.find({ 
-        _id: { $in: ingredientIds },
-        isActive: true 
-      });
-      
-      // Check if any ingredient has unit 'm3' or 'm2'
-      const hasM3OrM2Unit = ingredientDocs.some(ing => {
-        const unit = String(ing.unit || '').trim().toLowerCase();
-        return unit === 'm3' || unit === 'm2';
-      });
-      
-      // Only validate percentage if NO ingredient has m3/m2 unit
-      if (!hasM3OrM2Unit) {
-        const totalPercent = ingredientDocs.reduce((sum, ing) => sum + (ing.requiredPercent || 0), 0);
-        if (Math.abs(totalPercent - 100) > 0.01) {
-          return res.status(400).json({
-            success: false,
-            message: errorMessageService.getMessage('TOTAL_PERCENTAGE_MUST_BE_100', errorMessageService.getLocaleFromRequest(req), { total: totalPercent })
-          });
-        }
-      }
-    }
+    // Optional: the material's own ingredients ([{ name, unit, percentValue, pricePerM3|pricePerM2|priceForPer1Percent }]).
+    // Validated before anything is saved; old clients that sent ingredient IDs are ignored.
+    const ingredientList = Array.isArray(ingredients) && ingredients.length > 0 && ingredients.every(i => i && typeof i === 'object' && i.name)
+      ? ingredientService.normalizeIngredientList(ingredients)
+      : null;
 
     // Upload images to Firebase if they are base64
     let uploadedImageUrls = [];
@@ -1145,7 +871,7 @@ const createMaterial = async (req, res) => {
       unit,
       description,
       images: uploadedImageUrls,
-      ingredients: ingredientIds,
+      ingredients: [], // legacy ref list; ingredients live in the Ingredient collection (Ingredient.material)
       thicknessOptions,
       isPremium: isPremium || false,
       tags: tags || [],
@@ -1162,21 +888,25 @@ const createMaterial = async (req, res) => {
       _id: material._id,
       name: material.name,
       category: material.category,
-      ingredientsCount: ingredientIds.length,
+      ingredientsCount: ingredientList ? ingredientList.length : 0,
       isActive: material.isActive
     });
     
-    // Populate ingredients for response
-    await material.populate('ingredients');
+    const savedIngredients = ingredientList
+      ? await ingredientService.replaceMaterialIngredients(material._id, ingredientList)
+      : [];
 
     res.status(201).json({
       success: true,
       message: errorMessageService.getMessage('MATERIAL_CREATED', errorMessageService.getLocaleFromRequest(req)),
       data: {
-        material
+        material: ingredientService.attachIngredients(material.toJSON(), savedIngredients)
       }
     });
   } catch (error) {
+    if (error instanceof ingredientService.IngredientValidationError) {
+      return res.status(400).json({ success: false, message: errorMessageService.getMessage(error.key, errorMessageService.getLocaleFromRequest(req), error.params) });
+    }
     if (error.status === 400) return res.status(400).json({ success: false, message: error.message });
     console.error('Create material error:', error);
     console.error('Error details:', error.message);
@@ -1204,76 +934,25 @@ const updateMaterial = async (req, res) => {
 
     const updates = req.body;
     if (updates.contact !== undefined) updates.contact = normalizeContact(updates.contact);
-    const categoryChanged = updates.category && updates.category.toString() !== material.category.toString();
-    
-    // If category changed, get new category ingredients
-    if (categoryChanged) {
-      const categoryDoc = await MaterialCategory.findById(updates.category).populate('parentCategory', 'name');
+    // Category change: the new category must exist (ingredients stay with the material)
+    if (updates.category && updates.category.toString() !== material.category.toString()) {
+      const categoryDoc = await MaterialCategory.findById(updates.category);
       if (!categoryDoc) {
         return res.status(404).json({
           success: false,
           message: errorMessageService.getMessage('MATERIAL_CATEGORY_NOT_FOUND', errorMessageService.getLocaleFromRequest(req))
         });
       }
-
-      // Get ingredients from new category if not provided
-      if (!updates.ingredients || updates.ingredients.length === 0) {
-        const categoryIngredients = await Ingredient.find({ 
-          materialCategory: updates.category,
-          isActive: true 
-        }).select('_id');
-        updates.ingredients = categoryIngredients.map(ing => ing._id);
-      }
-
-      // Validate total percentage is 100
-      // BUT skip validation if any ingredient has unit 'm3' or 'm2'
-      if (updates.ingredients.length > 0) {
-        const ingredientDocs = await Ingredient.find({ 
-          _id: { $in: updates.ingredients },
-          isActive: true 
-        });
-        
-        // Check if any ingredient has unit 'm3' or 'm2'
-        const hasM3OrM2Unit = ingredientDocs.some(ing => {
-          const unit = String(ing.unit || '').trim().toLowerCase();
-          return unit === 'm3' || unit === 'm2';
-        });
-        
-        // Only validate percentage if NO ingredient has m3/m2 unit
-        if (!hasM3OrM2Unit) {
-          const totalPercent = ingredientDocs.reduce((sum, ing) => sum + (ing.requiredPercent || 0), 0);
-          if (Math.abs(totalPercent - 100) > 0.01) {
-            return res.status(400).json({
-              success: false,
-              message: errorMessageService.getMessage('TOTAL_PERCENTAGE_MUST_BE_100', errorMessageService.getLocaleFromRequest(req), { total: totalPercent })
-            });
-          }
-        }
-      }
-    } else if (updates.ingredients && updates.ingredients.length > 0) {
-      // Category didn't change but ingredients were updated, validate percentage
-      const ingredientDocs = await Ingredient.find({ 
-        _id: { $in: updates.ingredients },
-        isActive: true 
-      });
-      
-      // Check if any ingredient has unit 'm3' or 'm2'
-      const hasM3OrM2Unit = ingredientDocs.some(ing => {
-        const unit = String(ing.unit || '').trim().toLowerCase();
-        return unit === 'm3' || unit === 'm2';
-      });
-      
-      // Only validate percentage if NO ingredient has m3/m2 unit
-      if (!hasM3OrM2Unit) {
-        const totalPercent = ingredientDocs.reduce((sum, ing) => sum + (ing.requiredPercent || 0), 0);
-        if (Math.abs(totalPercent - 100) > 0.01) {
-          return res.status(400).json({
-            success: false,
-            message: errorMessageService.getMessage('TOTAL_PERCENTAGE_MUST_BE_100', errorMessageService.getLocaleFromRequest(req), { total: totalPercent })
-          });
-        }
-      }
     }
+
+    // Optional full replacement of the material's ingredients (validated before saving anything)
+    // (only object rows count — old clients that sent ingredient IDs never wipe the list;
+    //  to clear every ingredient use PUT /api/materials/:id/ingredients with [])
+    const ingredientList = Array.isArray(updates.ingredients) && updates.ingredients.length > 0
+      && updates.ingredients.every(i => i && typeof i === 'object' && i.name)
+      ? ingredientService.normalizeIngredientList(updates.ingredients)
+      : null;
+    delete updates.ingredients;
 
     Object.keys(updates).forEach(key => {
       if (updates[key] !== undefined) {
@@ -1283,17 +962,22 @@ const updateMaterial = async (req, res) => {
 
     await material.save();
     
-    // Populate ingredients for response
-    await material.populate('ingredients');
+    const savedIngredients = ingredientList
+      ? await ingredientService.replaceMaterialIngredients(material._id, ingredientList)
+      : await ingredientService.getMaterialIngredients(material._id, { includeInactive: true });
+    const materialResponse = ingredientService.attachIngredients(material.toJSON(), savedIngredients);
 
     res.status(200).json({
       success: true,
       message: errorMessageService.getMessage('MATERIAL_UPDATED', errorMessageService.getLocaleFromRequest(req)),
       data: {
-        material
+        material: materialResponse
       }
     });
   } catch (error) {
+    if (error instanceof ingredientService.IngredientValidationError) {
+      return res.status(400).json({ success: false, message: errorMessageService.getMessage(error.key, errorMessageService.getLocaleFromRequest(req), error.params) });
+    }
     if (error.status === 400) return res.status(400).json({ success: false, message: error.message });
     console.error('Update material error:', error);
     res.status(500).json({
@@ -1317,8 +1001,9 @@ const deleteMaterial = async (req, res) => {
       });
     }
 
-    // Hard delete - directly remove from database
+    // Hard delete - directly remove from database (with the material's own ingredients)
     await Material.findByIdAndDelete(req.params.id);
+    await ingredientService.deleteMaterialIngredients(material._id);
 
     res.status(200).json({
       success: true,

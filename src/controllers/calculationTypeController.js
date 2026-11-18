@@ -23,7 +23,10 @@ const getCalculationTypes = async (req, res) => {
 
     // Return choose-types from the array, or empty array if none
     // Add calculationType field and id to each choose-type
-    const chooseTypes = (calculationType.chooseTypes || []).map(chooseType => {
+    // Sorted by order number (then creation time) so web and mobile show the admin's order
+    const chooseTypes = [...(calculationType.chooseTypes || [])]
+      .sort((a, b) => ((a.sortOrder || 0) - (b.sortOrder || 0)) || (new Date(a.createdAt || 0) - new Date(b.createdAt || 0)))
+      .map(chooseType => {
       const chooseTypeObj = chooseType.toObject ? chooseType.toObject() : chooseType;
       return {
         ...chooseTypeObj,

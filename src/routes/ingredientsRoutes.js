@@ -149,4 +149,23 @@ router.delete('/categories/:categoryId/ingredients/:ingredientId',
   ingredientsController.deleteIngredient
 );
 
+// ===== Material-owned ingredients (each material has its own list) =====
+const materialIngredientsController = require('../controllers/materialIngredientsController');
+
+// GET /api/materials/:materialId/ingredients
+router.get('/:materialId/ingredients',
+  validateObjectId('materialId'),
+  handleValidationErrors,
+  materialIngredientsController.getMaterialIngredients
+);
+
+// PUT /api/materials/:materialId/ingredients  { ingredients: [...] } replaces the whole list
+router.put('/:materialId/ingredients',
+  auth,
+  admin, can('materials.edit', 'materials.create'),
+  validateObjectId('materialId'),
+  handleValidationErrors,
+  materialIngredientsController.replaceMaterialIngredients
+);
+
 module.exports = router;

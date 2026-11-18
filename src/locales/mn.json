@@ -434,5 +434,6 @@
   "SELECTED_MATERIAL_MODEL_ID_MONGOID": "selectedMaterialModel._id нь хүчинтэй MongoDB ObjectId байх ёстой",
   "SELECTED_THICKNESS_MODEL_ID_MONGOID": "selectedThicknessModel.id нь хүчинтэй MongoDB ObjectId байх ёстой",
   "USER_ID_MONGOID": "userId нь хүчинтэй MongoDB ObjectId байх ёстой",
-  "PIECE": "хэсэг"
+  "PIECE": "хэсэг",
+  "INGREDIENT_ROW_INVALID": "\"{name}\" орцын нэр, нэгж, хэмжээ, үнийг бөглөнө үү (сөрөг утга оруулж болохгүй)"
 }

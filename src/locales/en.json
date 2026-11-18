@@ -434,5 +434,6 @@
   "SELECTED_MATERIAL_MODEL_ID_MONGOID": "selectedMaterialModel._id must be a valid MongoDB ObjectId",
   "SELECTED_THICKNESS_MODEL_ID_MONGOID": "selectedThicknessModel.id must be a valid MongoDB ObjectId",
   "USER_ID_MONGOID": "userId must be a valid MongoDB ObjectId",
-  "PIECE": "piece"
+  "PIECE": "piece",
+  "INGREDIENT_ROW_INVALID": "Ingredient \"{name}\" needs a name, unit, amount and price (amount and price cannot be negative)"
 }

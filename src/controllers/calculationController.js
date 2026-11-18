@@ -9,7 +9,8 @@ const { uploadImageToFirebase } = require('../config/firebase');
 // @access  Private
 const getCalculationTypes = async (req, res) => {
   try {
-    const types = await CalculationType.find({}).sort('sortOrder');
+    // Order number decides display order on web and mobile; creation time breaks ties
+    const types = await CalculationType.find({}).sort({ sortOrder: 1, createdAt: 1 });
 
     // Check if user is premium member
     const userIsPremium = req.user.isPremiumMember();

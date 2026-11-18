@@ -592,6 +592,9 @@ const startServer = async () => {
     require('./src/services/chatRetentionService').startChatCleanupSchedule();
     // Built-in dashboard roles (superadmin, admin, operator) for Roles & Permission
     await require('./src/services/roleService').ensureSystemRoles();
+    // Ingredients belong to materials: fix indexes and copy old category ingredients once
+    await require('./src/services/ingredientMigrationService').migrateIngredientsToMaterials()
+      .catch(err => console.error('Ingredient migration error:', err));
 
     // Start server with Socket.IO
     server.listen(PORT, () => {
